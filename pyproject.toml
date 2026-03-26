@@ -9,6 +9,10 @@ dependencies = [
     "numpy>=2.4.3",
     "pillow>=12.1.1",
     "streamlit>=1.55.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "scipy>=1.11.0",
+    "scikit-image>=0.22.0",
 ]
 
 [dependency-groups]
