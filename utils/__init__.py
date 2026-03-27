@@ -1,5 +1,5 @@
 """Dataset module"""
-from ..utils.numpy_dataset import (
+from .numpy_dataset import (
     NumpyAstronomicalDataset,
     DataLoaderFactory,
     get_dataset,

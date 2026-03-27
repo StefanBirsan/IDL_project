@@ -1,6 +1,6 @@
 """Models module"""
 from .physics_informed_mae import PhysicsInformedMAE, create_physics_informed_mae
-from ..training.train_utils.modules import (
+from .modules import (
     PhysicsInformedPreprocessing,
     MaskedPatchEmbedding,
     FluxGuidanceGeneration,

@@ -4,7 +4,7 @@ Modular training pipeline with clean separation of concerns
 """
 import argparse
 from training.core import TrainingConfig, Trainer
-from dataset.numpy_dataset import get_dataloader
+from utils import get_dataloader
 
 
 

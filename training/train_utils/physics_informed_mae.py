@@ -5,7 +5,7 @@ Complete architecture combining preprocessing, masking, flux guidance, and hybri
 import torch
 import torch.nn as nn
 from typing import Tuple, Optional, Dict
-from ..training.train_utils.modules import (
+from .modules import (
     PhysicsInformedPreprocessing,
     MaskedPatchEmbedding,
     FluxGuidanceGeneration,
