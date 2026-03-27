@@ -35,6 +35,7 @@ class TrainingConfig:
     save_dir: str = 'checkpoints'
     save_interval: int = 10
     log_interval: int = 10
+    save_every_batches: int = 0
     
     def to_dict(self) -> dict:
         """Convert to dictionary"""

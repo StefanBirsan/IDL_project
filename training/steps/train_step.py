@@ -8,12 +8,16 @@ from torch.utils.data import DataLoader
 import tqdm
 from typing import Dict
 
-def train_one_epoch(model: nn.Module,
-                   train_loader: DataLoader,
-                   optimizer: torch.optim.Optimizer,
-                   device: torch.device,
-                   lambda_flux: float = 0.01,
-                   log_interval: int = 10) -> Dict[str, float]:
+def train_one_epoch(
+    model: nn.Module,
+    train_loader: DataLoader,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    lambda_flux: float = 0.01,
+    log_interval: int = 10,
+    save_every_batches: int = 0,
+    on_batch_checkpoint_callback_fn = None,
+) -> Dict[str, float]:
     """
     Train for one epoch, using LR input and HR target
     
@@ -24,6 +28,8 @@ def train_one_epoch(model: nn.Module,
         device: Device to train on
         lambda_flux: Weight for flux loss term
         log_interval: Logging interval
+        save_every_batches: Save checkpoint every N batches (0 to disable)
+        on_batch_checkpoint_callback_fn: Callback function to call every N batches
     Returns:
         Dictionary with loss values
     """
@@ -59,7 +65,12 @@ def train_one_epoch(model: nn.Module,
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
-        
+
+        if (save_every_batches > 0
+                and on_batch_checkpoint_callback_fn is not None
+                and (batch_index + 1) % save_every_batches == 0):
+            on_batch_checkpoint_callback_fn(batch_index + 1)
+
         # Track loss
         total_loss += loss_dict['loss_total']
         total_loss_recon += loss_dict['loss_recon']

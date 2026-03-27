@@ -58,6 +58,8 @@ def main():
                         help='Checkpoint save interval')
     parser.add_argument('--log-interval', type=int, default=10,
                         help='Logging interval')
+    parser.add_argument('--save-every-batches', type=int, default=0,
+                        help='Save checkpoint every N intra-epoch batches (0 to disable)')
     
     args = parser.parse_args()
     
@@ -81,6 +83,7 @@ def main():
         save_dir=args.save_dir,
         save_interval=args.save_interval,
         log_interval=args.log_interval,
+        save_every_batches=args.save_every_batches,
     )
     
     # Create trainer

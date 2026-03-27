@@ -79,6 +79,17 @@ class Trainer:
         
         for epoch in range(self.config.num_epochs):
             print(f"\nEpoch [{epoch+1}/{self.config.num_epochs}]")
+
+            def _save_mid_epoch(batch_index: int):
+                self.checkpoint_manager.save(
+                    epoch=epoch + 1,
+                    model=self.model,
+                    optimizer=self.optimizer,
+                    scheduler=self.scheduler,
+                    config=self.config.to_dict(),
+                    global_step=self.global_step,
+                    is_best=False
+                )
             
             # Train step
             train_loss_dict = train_one_epoch(
@@ -87,7 +98,9 @@ class Trainer:
                 optimizer=self.optimizer,
                 device=self.device,
                 lambda_flux=self.config.lambda_flux,
-                log_interval=self.config.log_interval
+                log_interval=self.config.log_interval,
+                save_every_batches=self.config.save_every_batches,
+                on_batch_checkpoint_callback_fn=_save_mid_epoch if self.config.save_every_batches > 0 else None
             )
             self.metrics.add_train_loss(train_loss_dict)
             self.global_step += len(train_loader)
