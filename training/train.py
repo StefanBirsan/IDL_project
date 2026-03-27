@@ -22,7 +22,7 @@ def main():
                         help='Number of data loading workers')
     
     # Model arguments
-    parser.add_argument('--img-size', type=int, default=64,
+    parser.add_argument('--img-size', type=int, default=128,
                         help='Image size')
     parser.add_argument('--embed-dim', type=int, default=768,
                         help='Embedding dimension')
@@ -48,7 +48,7 @@ def main():
                         help='Masking ratio (0.75-0.90)')
     
     # Hardware & logging arguments
-    parser.add_argument('--device', type=str, default='cuda',
+    parser.add_argument('--device', type=str, default='cpu',
                         help='Device (cuda or cpu)')
     parser.add_argument('--seed', type=int, default=42,
                         help='Random seed')
