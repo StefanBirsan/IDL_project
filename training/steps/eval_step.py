@@ -14,7 +14,7 @@ def eval_one_epoch(model: nn.Module,
                   device: torch.device,
                   lambda_flux: float = 0.01) -> Dict[str, float]:
     """
-    Evaluate for one epoch
+    Evaluate for one epoch, using LR input and HR target
     
     Args:
         model: Model to evaluate
@@ -33,15 +33,16 @@ def eval_one_epoch(model: nn.Module,
     
     progress_bar = tqdm.tqdm(eval_loader, desc="Evaluating")
     
-    for images, metadata in progress_bar:
-        images = images.to(device)
+    for batch in progress_bar:
+        lr_images = batch["lr_image"].to(device)
+        hr_images = batch["hr_image"].to(device)
         
-        # Forward pass
-        reconstructed, aux_outputs = model(images)
+        # Forward pass on LR images
+        reconstructed, aux_outputs = model(lr_images)
         
         # Compute loss
         loss, loss_dict = model.get_loss(
-            inputs=images,
+            inputs=hr_images,
             reconstructed=reconstructed,
             aux_outputs=aux_outputs,
             flux_map_target=None,

@@ -1,12 +1,12 @@
 """
 Single training step
 """
+import torch.nn.functional as F
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import tqdm
 from typing import Dict
-
 
 def train_one_epoch(model: nn.Module,
                    train_loader: DataLoader,
@@ -15,7 +15,7 @@ def train_one_epoch(model: nn.Module,
                    lambda_flux: float = 0.01,
                    log_interval: int = 10) -> Dict[str, float]:
     """
-    Train for one epoch
+    Train for one epoch, using LR input and HR target
     
     Args:
         model: Model to train
@@ -36,15 +36,18 @@ def train_one_epoch(model: nn.Module,
     
     progress_bar = tqdm.tqdm(train_loader, desc="Training")
     
-    for batch_idx, (images, metadata) in enumerate(progress_bar):
-        images = images.to(device)  # (B, C, H, W)
+    for batch_index, batch in enumerate(progress_bar):
+        lr_images = batch["lr_image"].to(device)
+        hr_images = batch["hr_image"].to(device)
         
-        # Forward pass
-        reconstructed, aux_outputs = model(images)
+        # Forward pass on LR images
+        reconstructed, aux_outputs = model(lr_images)
+
+        hr_for_loss = F.interpolate(hr_images, size=lr_images.shape[-2:])
         
-        # Compute loss
+        # Compute loss against HR
         loss, loss_dict = model.get_loss(
-            inputs=images,
+            inputs=hr_for_loss,
             reconstructed=reconstructed,
             aux_outputs=aux_outputs,
             flux_map_target=None,
@@ -64,7 +67,7 @@ def train_one_epoch(model: nn.Module,
         num_batches += 1
         
         # Update progress bar
-        if (batch_idx + 1) % log_interval == 0:
+        if (batch_index + 1) % log_interval == 0:
             avg_loss = total_loss / num_batches
             progress_bar.set_postfix({
                 'loss': f'{avg_loss:.4f}',
