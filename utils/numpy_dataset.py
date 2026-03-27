@@ -16,7 +16,8 @@ class NumpyAstronomicalDataset(Dataset):
     Assumes directory structure:
         data/
             x2/train_hr_patch/*.npy
-            x2/eval_dataloader.txt (optional, contains filenames for evaluation)
+            x2/train_lr_patch/*.npy
+            x2/train_dataloader.txt OR x2/eval_dataloader.txt (depending on chosen split)
     """
     
     def __init__(self,
@@ -42,123 +43,87 @@ class NumpyAstronomicalDataset(Dataset):
         self.preprocessing_fn = preprocessing_fn
         self.scale = scale
         
-        # Determine patch directory
-        self.patch_dir = self.data_dir / 'x2' / 'train_hr_patch'
+        # Determine patch directories
+        self.lr_dir = self.data_dir / 'x2' / f'{split}_lr_patch'
+        self.hr_dir = self.data_dir / 'x2' / f'{split}_hr_patch'
         
-        if not self.patch_dir.exists():
-            raise FileNotFoundError(f"Patch directory not found: {self.patch_dir}")
+        if not self.lr_dir.exists():
+            raise FileNotFoundError(f"LR patch directory not found: {self.lr_dir}")
+        if not self.hr_dir.exists():
+            raise FileNotFoundError(f"HR patch directory not found: {self.hr_dir}")
         
-        # Load file list
-        self._load_file_list()
+        # Load image pairs
+        self._load_image_pairs()
         
-        if len(self.file_list) == 0:
-            raise ValueError(f"No numpy files found in {self.patch_dir}")
-        
-        print(f"Loaded {len(self.file_list)} images for {split} split")
-    
-    def _load_file_list(self):
-        """Load list of numpy files"""
-        self.file_list = sorted([
-            f for f in os.listdir(self.patch_dir)
-            if f.endswith('.npy')
-        ])
-        
-        # If eval list is provided, filter accordingly
-        eval_list_path = self.data_dir / 'x2' / 'dataload_filename' / f'{self.split}_dataloader.txt'
-        if eval_list_path.exists():
-            with open(eval_list_path, 'r') as f:
-                allowed_files = {line.strip() for line in f}
-            self.file_list = [f for f in self.file_list if f in allowed_files]
+        if len(self._image_pairs) == 0:
+            raise ValueError(f"No LR/HR pairs found in dataset.\nCheck directories: {self.lr_dir},"
+                             f" {self.hr_dir}")
+
+    def _load_image_pairs(self):
+        """Load image pairs from manifest file"""
+
+        self._image_pairs = []
+
+        # open split manifest
+        split_manifest_path = self.data_dir / 'x2' / 'dataload_filename' / f'{self.split}_dataloader.txt'
+        if split_manifest_path.exists():
+            with open(split_manifest_path, 'r') as file:
+                for line in file:
+                    line = line.strip()
+                    if line:
+                        # tokenize line (is in CSV format)
+                        tokenized = line.split(',')
+                        hr_path = tokenized[0]
+                        lr_path = tokenized[1]
+
+                        # extract filenames
+                        hr_filename = Path(hr_path).name
+                        lr_filename = Path(lr_path).name
+
+                        # check if files exist in patch directories
+                        if (self.hr_dir / hr_filename).exists() and (self.lr_dir / lr_filename).exists():
+                            self._image_pairs.append((lr_filename, hr_filename))
+                        else:
+                            print(f"[WARN] File pair specified in manifest not found: {lr_filename}, {hr_filename}")
     
     def __len__(self) -> int:
-        return len(self.file_list)
+        return len(self._image_pairs)
     
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, dict]:
+    def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         """
-        Load a sample
-        
-        Returns:
-            image: Tensor of shape (1, H, W) or (C, H, W)
-            metadata: Dict with filename and other info
+        Load a sample from the dataset
         """
-        file_path = self.patch_dir / self.file_list[idx]
+        lr_name, hr_name = self._image_pairs[idx]
+        lr_path = self.lr_dir / lr_name
+        hr_path = self.hr_dir / hr_name
+
+        # load LR and HR .npy files
+        lr_data = np.load(lr_path, allow_pickle=True).item()
+        hr_data = np.load(hr_path, allow_pickle=True).item()
         
-        # Load numpy array
-        image = np.load(file_path).astype(np.float32)
-        
-        # Handle different array shapes
-        if image.ndim == 2:
-            # Grayscale image: add channel dimension
-            image = image[np.newaxis, ...]
-        elif image.ndim == 3:
-            # Already has channel dimension
-            pass
-        else:
-            raise ValueError(f"Unexpected image shape: {image.shape}")
-        
-        # Scale image
-        if self.scale != 1.0:
-            image = image * self.scale
-        
-        # Center crop to target size if needed
-        image = self._center_crop(image, self.img_size)
-        
-        # Normalize
-        if self.normalize:
-            image = self._normalize(image)
-        
-        # Apply preprocessing if provided
-        if self.preprocessing_fn is not None:
-            image = self.preprocessing_fn(image)
-        
-        # Convert to torch
-        image_tensor = torch.from_numpy(image).float()
-        
-        metadata = {
-            'filename': self.file_list[idx],
-            'shape': image.shape,
+        # load images from .npy files
+        lr_image = lr_data['image'].astype(np.float32)
+        hr_image = hr_data['image'].astype(np.float32)
+
+        # extract masks for loss computation
+        hr_mask = hr_data['mask'].astype(np.float32)
+        lr_mask = lr_data['mask'].astype(np.float32)
+
+        return {
+            'lr_image': torch.from_numpy(lr_image).unsqueeze(0), # add channel dimension
+            'hr_image': torch.from_numpy(hr_image).unsqueeze(0),
+            'hr_mask': torch.from_numpy(hr_mask).unsqueeze(0),
+            'lr_mask': torch.from_numpy(lr_mask).unsqueeze(0),
         }
-        
-        return image_tensor, metadata
-    
+
     @staticmethod
-    def _center_crop(image: np.ndarray, target_size: int) -> np.ndarray:
-        """Center crop image to target size"""
-        _, h, w = image.shape
-        
-        if h == target_size and w == target_size:
-            return image
-        
-        if h < target_size or w < target_size:
-            # Pad if needed
-            pad_h = max(0, target_size - h)
-            pad_w = max(0, target_size - w)
-            image = np.pad(
-                image,
-                ((0, 0), (pad_h // 2, pad_h - pad_h // 2), (pad_w // 2, pad_w - pad_w // 2)),
-                mode='constant',
-                constant_values=0
-            )
-        
-        # Center crop
-        _, h, w = image.shape
-        start_h = (h - target_size) // 2
-        start_w = (w - target_size) // 2
-        
-        return image[:, start_h:start_h + target_size, start_w:start_w + target_size]
-    
-    @staticmethod
-    def _normalize(image: np.ndarray) -> np.ndarray:
-        """Normalize image to [-1, 1] range"""
-        min_val = image.min()
-        max_val = image.max()
-        
-        if max_val - min_val > 0:
-            image = 2.0 * (image - min_val) / (max_val - min_val) - 1.0
-        else:
-            image = image - min_val
-        
-        return image
+    def get_hr_filename_from_lr(lr_filename: str) -> str:
+        """
+        Get the corresponding HR image filename from the LR image filename.
+        """
+        # Replace _hr_lr_patch_ with _hr_hr_patch_
+        hr_filename = lr_filename.replace("_hr_lr_patch_", "_hr_hr_patch_")
+        return hr_filename
 
 
 class DataLoaderFactory:
