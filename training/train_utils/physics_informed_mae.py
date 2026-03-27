@@ -331,16 +331,16 @@ class PhysicsInformedMAE(nn.Module):
 
 def create_physics_informed_mae(img_size: int = 64, **kwargs) -> PhysicsInformedMAE:
     """Factory function to create Physics-Informed MAE"""
-    model = PhysicsInformedMAE(
-        img_size=img_size,
-        patch_size=4,
-        in_channels=1,
-        embed_dim=768,
-        encoder_depth=12,
-        decoder_depth=8,
-        num_heads=12,
-        mlp_ratio=4.0,
-        mask_ratio=0.75,
-        **kwargs
-    )
-    return model
+    defaults = {
+        "img_size": img_size,
+        "patch_size": 4,
+        "in_channels": 1,
+        "embed_dim": 768,
+        "encoder_depth": 12,
+        "decoder_depth": 8,
+        "num_heads": 12,
+        "mlp_ratio": 4.0,
+        "mask_ratio": 0.75,
+    }
+    defaults.update(kwargs)  # user-provided args override defaults
+    return PhysicsInformedMAE(**defaults)
