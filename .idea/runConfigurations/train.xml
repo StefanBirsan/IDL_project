@@ -1,0 +1,27 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="train" type="UvRunConfigurationType" factoryName="UvRunConfigurationType">
+    <option name="args">
+      <list>
+        <option value="--data-dir" />
+        <option value="dataset/data" />
+        <option value="--num-epochs" />
+        <option value="1" />
+        <option value="--batch-size" />
+        <option value="8" />
+        <option value="--save-every-batches" />
+        <option value="10" />
+      </list>
+    </option>
+    <option name="checkSync" value="true" />
+    <option name="env">
+      <map />
+    </option>
+    <option name="runType" value="SCRIPT" />
+    <option name="scriptOrModule" value="U:\Year_III\DeepLearning\Project\training\train.py" />
+    <option name="uvArgs">
+      <list />
+    </option>
+    <option name="uvSdkKey" value="uv (Project)" />
+    <method v="2" />
+  </configuration>
+</component>
