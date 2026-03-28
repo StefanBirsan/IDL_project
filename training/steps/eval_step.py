@@ -3,6 +3,7 @@ Single evaluation step
 """
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import DataLoader
 import tqdm
 from typing import Dict
@@ -40,9 +41,12 @@ def eval_one_epoch(model: nn.Module,
         # Forward pass on LR images
         reconstructed, aux_outputs = model(lr_images)
         
+        # Interpolate HR images to match LR image size (same as in training)
+        hr_for_loss = F.interpolate(hr_images, size=lr_images.shape[-2:])
+        
         # Compute loss
         loss, loss_dict = model.get_loss(
-            inputs=hr_images,
+            inputs=hr_for_loss,
             reconstructed=reconstructed,
             aux_outputs=aux_outputs,
             flux_map_target=None,

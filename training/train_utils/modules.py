@@ -417,5 +417,5 @@ class DropPath(nn.Module):
             return x
         keep_prob = 1 - self.drop_prob
         shape = (x.shape[0],) + (1,) * (x.ndim - 1)
-        random_tensor = torch.bernoulli(torch.ones(shape) * keep_prob)
+        random_tensor = torch.bernoulli(torch.ones(shape, device=x.device) * keep_prob)
         return x * random_tensor / keep_prob

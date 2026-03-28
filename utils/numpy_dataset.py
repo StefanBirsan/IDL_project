@@ -105,6 +105,27 @@ class NumpyAstronomicalDataset(Dataset):
         lr_image = lr_data['image'].astype(np.float32)
         hr_image = hr_data['image'].astype(np.float32)
 
+        # Normalize images to [0, 1] range
+        if self.normalize:
+            lr_min, lr_max = lr_image.min(), lr_image.max()
+            hr_min, hr_max = hr_image.min(), hr_image.max()
+            
+            # Avoid division by zero
+            if lr_max > lr_min:
+                lr_image = (lr_image - lr_min) / (lr_max - lr_min + 1e-8)
+            else:
+                lr_image = np.zeros_like(lr_image)
+            
+            if hr_max > hr_min:
+                hr_image = (hr_image - hr_min) / (hr_max - hr_min + 1e-8)
+            else:
+                hr_image = np.zeros_like(hr_image)
+        
+        # Scale if needed
+        if self.scale != 1.0:
+            lr_image = lr_image * self.scale
+            hr_image = hr_image * self.scale
+
         # extract masks for loss computation
         hr_mask = hr_data['mask'].astype(np.float32)
         lr_mask = lr_data['mask'].astype(np.float32)
