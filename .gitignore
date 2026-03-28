@@ -10,4 +10,7 @@ wheels/
 .venv
 
 # dataset files
-dataset
+dataset/
+
+*.onnx
+*.onnx.data
