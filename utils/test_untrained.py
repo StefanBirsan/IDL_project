@@ -1,10 +1,17 @@
 from typing import Any, Tuple
+import sys
 
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import random
+
+# fix to add project root to path for imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from training.train_utils import create_physics_informed_mae
 import torch.nn.functional as F
 from astropy.visualization import ZScaleInterval, ImageNormalize
@@ -19,7 +26,7 @@ sample pair from the dataset.
 """
 
 # configuration
-DATA_DIR = Path("dataset/data/x2")
+DATA_DIR = PROJECT_ROOT / "dataset" / "data" / "x2"
 DATASET_SPLIT = "train"  # or "eval"
 IMG_SIZE = 128  # since we are using the x2 dataset
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -240,7 +247,7 @@ def main():
     axes[2].axis("off")
 
     plt.tight_layout()
-    save_path = "results_untrained_vs_hr.png"
+    save_path = PROJECT_ROOT / "results_untrained_vs_hr.png"
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     print(f"✅ Saved visualization to {save_path}")
     plt.show()

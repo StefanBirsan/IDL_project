@@ -11,7 +11,8 @@ from training.inference import Inference, ONNXInference
 from training.train_utils import create_physics_informed_mae
 from utils import NumpyAstronomicalDataset, get_dataset, visualize_result
 
-DATA_DIR = Path("dataset/data/x2")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "dataset" / "data" / "x2"
 DATASET_SPLIT = "eval"
 IMG_SIZE = 128
 
