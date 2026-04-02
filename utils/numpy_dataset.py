@@ -44,8 +44,8 @@ class NumpyAstronomicalDataset(Dataset):
         self.scale = scale
         
         # Determine patch directories
-        self.lr_dir = self.data_dir / 'x2' / f'{split}_lr_patch'
-        self.hr_dir = self.data_dir / 'x2' / f'{split}_hr_patch'
+        self.lr_dir = self.data_dir / f'{split}_lr_patch'
+        self.hr_dir = self.data_dir / f'{split}_hr_patch'
         
         if not self.lr_dir.exists():
             raise FileNotFoundError(f"LR patch directory not found: {self.lr_dir}")
@@ -65,7 +65,7 @@ class NumpyAstronomicalDataset(Dataset):
         self._image_pairs = []
 
         # open split manifest
-        split_manifest_path = self.data_dir / 'x2' / 'dataload_filename' / f'{self.split}_dataloader.txt'
+        split_manifest_path = self.data_dir / 'dataload_filename' / f'{self.split}_dataloader.txt'
         if split_manifest_path.exists():
             with open(split_manifest_path, 'r') as file:
                 for line in file:
@@ -145,6 +145,18 @@ class NumpyAstronomicalDataset(Dataset):
         # Replace _hr_lr_patch_ with _hr_hr_patch_
         hr_filename = lr_filename.replace("_hr_lr_patch_", "_hr_hr_patch_")
         return hr_filename
+
+    def get_random_sample(self) -> dict[str, torch.Tensor]:
+        """
+        Get a random LR/HR pair tensor sample from the dataset
+        - LR image tensor shape: (1, C, H, W)
+        - HR image tensor shape: (1, C, H, W)
+        """
+
+        # get random index
+        idx = np.random.randint(0, len(self._image_pairs) - 1)
+
+        return self.__getitem__(idx)
 
 
 class DataLoaderFactory:

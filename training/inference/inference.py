@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from pathlib import Path
-from typing import Union, Tuple, Optional, Dict
+from typing import Union, Tuple, Optional, Dict, Literal
 from PIL import Image
 import matplotlib.pyplot as plt
 
@@ -17,7 +17,7 @@ class Inference:
     def __init__(self,
                  model: nn.Module,
                  checkpoint_path: Optional[str] = None,
-                 device: str = 'cuda'):
+                 device: Literal['cpu', 'cuda'] = 'cpu'):
         """
         Initialize inference engine
         
@@ -42,7 +42,14 @@ class Inference:
         else:
             self.model.load_state_dict(checkpoint)
         print(f"Loaded checkpoint from {checkpoint_path}")
-    
+
+    @staticmethod
+    def _extract_prediction(model_output):
+        """Extract image prediction when model returns either tensor or (tensor, aux)."""
+        if isinstance(model_output, (tuple, list)):
+            return model_output[0]
+        return model_output
+
     @torch.no_grad()
     def infer(self, image: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """
@@ -67,7 +74,8 @@ class Inference:
         
         # Run inference
         with torch.no_grad():
-            reconstructed = self.model(image)
+            model_output = self.model(image)
+            reconstructed = self._extract_prediction(model_output)
         
         return reconstructed.cpu()
     
@@ -92,7 +100,8 @@ class Inference:
         
         # Run inference
         with torch.no_grad():
-            reconstructed = self.model(images)
+            model_output = self.model(images)
+            reconstructed = self._extract_prediction(model_output)
         
         return reconstructed.cpu()
     
@@ -111,30 +120,32 @@ class Inference:
         # Convert to tensor format if needed
         if image.ndim == 2:
             image = np.expand_dims(image, 0)
-        
+
         # Run inference
         reconstructed = self.infer(image)  # Returns (1, C, H, W)
-        
+
         # Convert back to numpy
         input_np = image[0] if image.ndim == 3 else image  # Remove channel dim for 2D
         output_np = reconstructed[0, 0].numpy() if reconstructed.shape[1] == 1 else reconstructed[0].numpy()
-        
-        # Create visualization if requested
-        if save_path is not None:
-            fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-            
-            axes[0].imshow(input_np, cmap='gist_gray')
-            axes[0].set_title('Input Image')
-            axes[0].axis('off')
-            
-            axes[1].imshow(output_np, cmap='gist_gray')
-            axes[1].set_title('Reconstructed Image')
-            axes[1].axis('off')
-            
-            plt.tight_layout()
+
+        # Create visualization
+        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+        axes[0].imshow(input_np, cmap='gist_gray')
+        axes[0].set_title('Input Image')
+        axes[0].axis('off')
+
+        axes[1].imshow(output_np, cmap='gist_gray')
+        axes[1].set_title('Reconstructed Image')
+        axes[1].axis('off')
+
+        plt.tight_layout()
+        # save if requested
+        if save_path:
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
             print(f"Saved visualization to {save_path}")
-            plt.close()
+
+        plt.show()
         
         return input_np, output_np
     
