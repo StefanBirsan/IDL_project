@@ -106,13 +106,15 @@ class Inference:
         return reconstructed.cpu()
     
     def visualize_inference(self,
-                          image: np.ndarray,
-                          save_path: Optional[str] = None) -> Tuple[np.ndarray, np.ndarray]:
+                            image: np.ndarray,
+                            ground_truth: Optional[np.ndarray] = None,
+                            save_path: Optional[str] = None) -> Tuple[np.ndarray, np.ndarray]:
         """
         Run inference and visualize results
         
         Args:
             image: Input image (H, W) or (C, H, W)
+            ground_truth: Optional ground truth image for visual comparison (H, W) or (C, H, W)
             save_path: Optional path to save comparison image
         Returns:
             Tuple of (input_image, reconstructed_image)
@@ -120,6 +122,9 @@ class Inference:
         # Convert to tensor format if needed
         if image.ndim == 2:
             image = np.expand_dims(image, 0)
+        # Do the same for ground truth if provided
+        if ground_truth is not None and ground_truth.ndim == 2:
+            ground_truth = np.expand_dims(ground_truth, 0)
 
         # Run inference
         reconstructed = self.infer(image)  # Returns (1, C, H, W)
@@ -129,15 +134,21 @@ class Inference:
         output_np = reconstructed[0, 0].numpy() if reconstructed.shape[1] == 1 else reconstructed[0].numpy()
 
         # Create visualization
-        fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+        num_cols = 3 if ground_truth is not None else 2
+        fig, axes = plt.subplots(1, num_cols, figsize=(12, 5))
 
-        axes[0].imshow(input_np, cmap='gist_gray')
+        axes[0].imshow(input_np, cmap='gray')
         axes[0].set_title('Input Image')
         axes[0].axis('off')
 
-        axes[1].imshow(output_np, cmap='gist_gray')
+        axes[1].imshow(output_np, cmap='gray')
         axes[1].set_title('Reconstructed Image')
         axes[1].axis('off')
+
+        if ground_truth is not None:
+            axes[2].imshow(ground_truth[0], cmap='gray')
+            axes[2].set_title('Ground Truth')
+            axes[2].axis('off')
 
         plt.tight_layout()
         # save if requested

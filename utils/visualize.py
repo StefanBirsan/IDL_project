@@ -10,16 +10,16 @@ from astropy.visualization import ZScaleInterval, ImageNormalize
 
 def normalize_STAR(image: np.ndarray, contrast: float = 0.25) -> np.ndarray:
     """
-            Apply Z-scale normalization for astronomical images.
-            This technique enhances faint features while preventing bright stars from saturating.
+    Apply Z-scale normalization for astronomical images.
+    This technique enhances faint features while preventing bright stars from saturating.
 
-            Args:
-                image: Input astronomical image
-                contrast: Contrast parameter (default 0.25, lower = more contrast)
+    Args:
+        image: Input astronomical image
+        contrast: Contrast parameter (default 0.25, lower = more contrast)
 
-            Returns:
-                Normalized image suitable for visualization
-            """
+    Returns:
+        Normalized image suitable for visualization
+    """
     # Remove NaN and Inf values
     image_clean = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
 
@@ -29,10 +29,11 @@ def normalize_STAR(image: np.ndarray, contrast: float = 0.25) -> np.ndarray:
     return norm(image_clean)
 
 def visualize_result(
-        input_image: np.ndarray,
-        output_image: np.ndarray,
+    input_image: np.ndarray,
+    output_image: np.ndarray,
     ground_truth_image: Optional[np.ndarray] = None,
     save_path: Optional[str] = None,
+    show_plot: Optional[bool] = False,
 ):
     """
     Visualize input, output, and optionally ground truth images side by side.
@@ -42,7 +43,9 @@ def visualize_result(
         output_image: Model output image (C, H, W) or (H, W, C)
         ground_truth_image: Optional ground truth image (C, H, W) or (H, W, C)
         save_path: Optional path to save the visualization
+        show_plot: Whether to show the plot
     """
+
     def to_display(image: np.ndarray) -> np.ndarray:
         """Convert CHW/HW/HWC arrays to a shape accepted by matplotlib."""
         arr = np.asarray(image)
@@ -63,6 +66,10 @@ def visualize_result(
                     return np.squeeze(arr, axis=-1)
                 return arr
 
+        if arr.ndim == 4:
+            # Batch of images: (B, C, H, W)
+            return np.squeeze(arr)
+
         raise ValueError(f"Unsupported image shape for visualization: {arr.shape}")
 
     input_image = to_display(input_image)
@@ -74,18 +81,28 @@ def visualize_result(
     # Create figure
     num_images = 2 + (ground_truth_image is not None)
     fig, axes = plt.subplots(1, num_images, figsize=(10, 5))
-    # plt.figure(figsize=(5 * num_images, 5))
 
     plot_items = [
         (input_image, "Input Image"),
         (output_image, "Model Output"),
-        (ground_truth_image, "Ground Truth") if ground_truth_image is not None else None,
+        (ground_truth_image, "Ground Truth")
+        if ground_truth_image is not None
+        else None,
     ]
 
     plot_items = [item for item in plot_items if item is not None]
 
+    """
+    NOTE: Some results are better visualized with different colormaps:
+    - `gray_r` displays the details in black over a white background
+    thus fainter details are more visible.
+    - `Greys_r`, is similar to `gray`, but the colormap is sequential
+    and more friendly to the human eye.
+    - `Greys` is similar to `gray_r`, with the same difference stated above.
+    """
+
     for ax, (image, title) in zip(axes, plot_items):
-        ax.imshow(image, cmap="gist_gray")
+        ax.imshow(image, cmap="gray")
         ax.set_title(title)
         ax.axis("off")
 
@@ -95,5 +112,9 @@ def visualize_result(
     if save_path:
         plt.savefig(save_path)
         print(f"Visualization saved to {save_path}")
+
+    if not show_plot:
+        plt.close(fig)
+        return
 
     plt.show()

@@ -90,34 +90,6 @@ def resize_image_to_shape(image: np.ndarray, target_hw: tuple[int, int]) -> np.n
     return resized.squeeze(0).squeeze(0).cpu().numpy()
 
 
-def load_image_from_npy(path: Path) -> np.ndarray:
-    """ """
-    payload = np.load(path, allow_pickle=True)
-
-    # first unpickle the dict saved in .npy
-    payload = payload.item()
-
-    # then extract image key
-    image = payload["image"]
-
-    return np.asarray(image, dtype=np.float32)
-
-    # Case 1: pickled dict saved in .npy (common in your dataset)
-    # if isinstance(payload, np.ndarray) and payload.dtype == object:
-    #     print(f"File {path} is a pickled dict. Unpickling...")
-    #     payload = payload.item()
-    #
-    # if isinstance(payload, dict):
-    #     print(f"File {path} is a dict. Extracting 'image' key...")
-    #     if "image" not in payload:
-    #         raise KeyError(f"'image' key missing in {path}")
-    #     image = payload["image"]
-    # else:
-    #     # Case 2: plain numeric ndarray
-    #     print(f"File {path} is a plain ndarray. Assuming it's an image.")
-    #     image = payload
-
-
 def get_hr_filename_from_lr(lr_filename: str) -> str:
     """
     Get the corresponding HR image filename from the LR image filename.
