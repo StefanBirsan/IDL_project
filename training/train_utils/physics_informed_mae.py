@@ -271,54 +271,30 @@ class PhysicsInformedMAE(nn.Module):
         
         else:
             # ===== SR MODE: HR Upsampling Reconstruction =====
-            # Apply CNN refinement to decoder features
-            # x_decode: (B, num_patches, embed_dim)
-            # Reshape to spatial: (B, H//patch_size, W//patch_size, embed_dim)
-            x_refined = x_decode.view(
-                B,
-                H // self.patch_size,
-                W // self.patch_size,
-                self.embed_dim
-            )
-            x_refined = x_refined.permute(0, 3, 1, 2).contiguous()  # (B, embed_dim, H//ps, W//ps)
+            # Use standard reconstruction output then upscale
             
-            # Apply CNN refinement head
-            x_refined = self.cnn_refine(x_refined)  # (B, patch_size^2, H//ps, W//ps)
-            
-            # Apply PixelShuffle upsampling layers
-            for upsample_layer in self.upsample_layers:
-                x_refined = upsample_layer(x_refined)
-            
-            # At this point, x_refined should be (B, out_channels, H', W')
-            # where H', W' depends on the number of upsampling stages
-            # For scale_factor=2: (B, 16, H, W) -> PixelShuffle -> (B, 4, 2H, 2W)
-            # For scale_factor=4: (B, 16, H, W) -> PixelShuffle -> (B, 4, 2H, 2W) -> PixelShuffle -> (B, 1, 4H, 4W)
-            
-            # Final projection to image space
+            # Project patches back to pixel values
             patches_reconstructed = self.output_projection(x_decode)  # (B, num_patches, patch_size^2)
             
-            # Reshape base reconstruction patches to spatial
-            base_recon = patches_reconstructed.view(
+            # Reshape to image (LR size first)
+            reconstructed = patches_reconstructed.view(
                 B,
                 H // self.patch_size,
                 W // self.patch_size,
                 self.patch_size,
                 self.patch_size
             )
-            base_recon = base_recon.permute(0, 3, 4, 1, 2).contiguous()
-            base_recon = base_recon.view(B, C, H, W)
+            reconstructed = reconstructed.permute(0, 3, 4, 1, 2).contiguous()
+            reconstructed = reconstructed.view(B, C, H, W)
             
-            # Apply upsampling to the base reconstruction
+            # Upscale to HR using bilinear interpolation
             reconstructed = F.interpolate(
-                base_recon,
+                reconstructed,
                 scale_factor=self.scale_factor,
                 mode='bilinear',
                 align_corners=False
             )
-            
-            # Add refined details from CNN refinement (optional blending)
-            # For now, we use the interpolated version as main output
-            # The CNN refinement provides additional feature context
+            # reconstructed is now (B, C, H*scale, W*scale)
         
         # ============ AUX OUTPUTS ============
         aux_outputs = {

@@ -61,8 +61,8 @@ class SSIMLoss(nn.Module):
         """
         B, C, H, W = pred.shape
         
-        # Extend kernel to match number of channels
-        kernel = self.kernel.repeat(C, 1, 1, 1)
+        # Extend kernel to match number of channels and move to input device
+        kernel = self.kernel.repeat(C, 1, 1, 1).to(pred.device)
         
         # Compute local means
         mu1 = F.conv2d(pred, kernel, padding=self.window_size // 2, groups=C)
@@ -110,9 +110,9 @@ class FFTLoss(nn.Module):
         Returns:
             scalar loss
         """
-        # Compute FFT
-        pred_fft = torch.fft.rfft2d(pred)
-        target_fft = torch.fft.rfft2d(target)
+        # Compute 2D real FFT
+        pred_fft = torch.fft.rfftn(pred, dim=[-2, -1])
+        target_fft = torch.fft.rfftn(target, dim=[-2, -1])
         
         # Get magnitude spectra
         pred_mag = torch.abs(pred_fft)
@@ -145,7 +145,7 @@ class MaskedReconstructionLoss(nn.Module):
         Args:
             pred: (B, C, H, W) predicted patches (flattened)
             target: (B, C, H, W) target patches (flattened)
-            mask: (B, num_patches) binary mask (1 = masked, 0 = visible)
+            mask: (B, num_patches_lr) binary mask from LR encoding (1 = masked, 0 = visible)
             patch_size: size of patch
         Returns:
             scalar loss
@@ -153,6 +153,7 @@ class MaskedReconstructionLoss(nn.Module):
         B, C, H, W = target.shape
         num_patches_h = H // patch_size
         num_patches_w = W // patch_size
+        num_patches_total = num_patches_h * num_patches_w
         
         # Extract to patches
         target_patches = target.view(B, C, num_patches_h, patch_size,
@@ -167,17 +168,30 @@ class MaskedReconstructionLoss(nn.Module):
         
         # Reconstruction loss
         recon_loss = (pred_patches - target_patches) ** 2
+        # Average over patch elements to get per-patch loss: (B, num_patches)
+        recon_loss = recon_loss.mean(dim=-1)
+        
+        # Handle mask size mismatch (SR mode: mask is from LR, target is HR)
+        # Upsample mask if needed
+        mask_size = mask.shape[1]
+        if mask_size != num_patches_total:
+            # Mask is from lower resolution - upsample it to match target patches
+            scale = num_patches_total // mask_size
+            scale_h = scale_w = int(scale ** 0.5)
+            
+            # Reshape mask to 2D grid, upsample, then flatten
+            mask_2d = mask.view(B, int(mask_size ** 0.5), int(mask_size ** 0.5))
+            # Repeat each patch scale_h x scale_w times
+            mask_upsampled = mask_2d.repeat_interleave(scale_h, dim=1).repeat_interleave(scale_w, dim=2)
+            mask = mask_upsampled.view(B, -1)
         
         # Apply mask: weight masked patches higher
-        # mask shape: (B, num_patches)
-        mask_expanded = mask.unsqueeze(-1)  # (B, num_patches, 1)
-        
         if self.visible_weight > 0:
             # Include visible patches with reduced weight
-            weights = mask_expanded.float() + self.visible_weight * (1 - mask_expanded.float())
+            weights = mask.float() + self.visible_weight * (1 - mask.float())
         else:
             # Masked-only (true MAE)
-            weights = mask_expanded.float()
+            weights = mask.float()
         
         weighted_loss = recon_loss * weights
         loss = weighted_loss.mean()
