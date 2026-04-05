@@ -11,6 +11,14 @@ wheels/
 
 # dataset files
 dataset/
+# checkpoints
+checkpoints/
+# results
+results/
+
+# .idea files except run configurations
+.idea/*
+!.idea/runConfigurations
 
 *.onnx
 *.onnx.data

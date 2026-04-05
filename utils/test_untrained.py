@@ -1,10 +1,17 @@
 from typing import Any, Tuple
+import sys
 
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 import random
+
+# fix to add project root to path for imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from training.train_utils import create_physics_informed_mae
 import torch.nn.functional as F
 from astropy.visualization import ZScaleInterval, ImageNormalize
@@ -19,7 +26,7 @@ sample pair from the dataset.
 """
 
 # configuration
-DATA_DIR = Path("dataset/data/x2")
+DATA_DIR = PROJECT_ROOT / "dataset" / "data" / "x2"
 DATASET_SPLIT = "train"  # or "eval"
 IMG_SIZE = 128  # since we are using the x2 dataset
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -88,34 +95,6 @@ def resize_image_to_shape(image: np.ndarray, target_hw: tuple[int, int]) -> np.n
         resized = F.interpolate(t, size=target_hw, mode="bicubic", align_corners=False)
 
     return resized.squeeze(0).squeeze(0).cpu().numpy()
-
-
-def load_image_from_npy(path: Path) -> np.ndarray:
-    """ """
-    payload = np.load(path, allow_pickle=True)
-
-    # first unpickle the dict saved in .npy
-    payload = payload.item()
-
-    # then extract image key
-    image = payload["image"]
-
-    return np.asarray(image, dtype=np.float32)
-
-    # Case 1: pickled dict saved in .npy (common in your dataset)
-    # if isinstance(payload, np.ndarray) and payload.dtype == object:
-    #     print(f"File {path} is a pickled dict. Unpickling...")
-    #     payload = payload.item()
-    #
-    # if isinstance(payload, dict):
-    #     print(f"File {path} is a dict. Extracting 'image' key...")
-    #     if "image" not in payload:
-    #         raise KeyError(f"'image' key missing in {path}")
-    #     image = payload["image"]
-    # else:
-    #     # Case 2: plain numeric ndarray
-    #     print(f"File {path} is a plain ndarray. Assuming it's an image.")
-    #     image = payload
 
 
 def get_hr_filename_from_lr(lr_filename: str) -> str:
@@ -268,7 +247,7 @@ def main():
     axes[2].axis("off")
 
     plt.tight_layout()
-    save_path = "results_untrained_vs_hr.png"
+    save_path = PROJECT_ROOT / "results_untrained_vs_hr.png"
     plt.savefig(save_path, dpi=150, bbox_inches="tight")
     print(f"✅ Saved visualization to {save_path}")
     plt.show()

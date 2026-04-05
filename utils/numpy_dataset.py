@@ -158,6 +158,19 @@ class NumpyAstronomicalDataset(Dataset):
 
         return self.__getitem__(idx)
 
+    @staticmethod
+    def load_image_from_npy(path: Path) -> np.ndarray:
+        """Load an image from a .npy file"""
+        payload = np.load(path, allow_pickle=True)
+
+        # first unpickle the dict saved in .npy
+        payload = payload.item()
+
+        # then extract image key
+        image = payload["image"]
+
+        return np.asarray(image, dtype=np.float32)
+
 
 class DataLoaderFactory:
     """Factory for creating data loaders"""
