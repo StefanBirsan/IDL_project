@@ -2,6 +2,8 @@
 
 Complete PyTorch implementation of a custom deep learning architecture for astronomical image reconstruction and flux-consistent super-resolution.
 
+> ⚠️ **IMPORTANT**: This codebase has been upgraded to support **true super-resolution (SR)** as the **default behavior**. The model now performs LR → HR upscaling with advanced reconstruction losses. See [`training/TRAINING_ARCHITECTURE_SR.md`](./TRAINING_ARCHITECTURE_SR.md) for detailed SR mode documentation. **Legacy mode is still available** via `--mode legacy` for backward compatibility.
+
 ## Architecture Overview
 
 ### 1. **Physics-Informed Preprocessing**
@@ -109,13 +111,33 @@ IDL_project/
 
 ### 1. **Training the Model**
 
-```bash
-# Basic training (uses default hyperparameters)
-uv run training/train.py --data-dir dataset/data
+#### Super-Resolution Mode (DEFAULT - Recommended)
 
-# Custom hyperparameters
+```bash
+# Basic SR training (2x upscaling with advanced losses)
+uv run training/train.py
+
+# Custom scale factor (4x upscaling)
+uv run training/train.py --scale-factor 4
+
+# Custom loss weights
 uv run training/train.py \
-    --data-dir dataset/data \
+    --lambda-l1 0.7 \
+    --lambda-ssim 0.5 \
+    --lambda-fft 0.2 \
+    --lambda-recon 1.0
+```
+
+See [`training/TRAINING_ARCHITECTURE_SR.md`](./TRAINING_ARCHITECTURE_SR.md) for comprehensive SR training guide.
+
+#### Legacy Mode (LR Reconstruction - Backward Compatible)
+
+```bash
+# Use original behavior (LR -> LR reconstruction, no upsampling)
+uv run training/train.py --mode legacy
+
+# With custom legacy parameters
+uv run training/train.py --mode legacy \
     --batch-size 64 \
     --num-epochs 200 \
     --lr 1.5e-4 \
