@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Union, Tuple, Optional, Dict, Literal
 from PIL import Image
 import matplotlib.pyplot as plt
+import logging
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+logger.addHandler(handler)
 
 class Inference:
     """Inference engine for Physics-Informed MAE models"""
@@ -37,11 +42,19 @@ class Inference:
     def _load_checkpoint(self, checkpoint_path: str):
         """Load model from checkpoint"""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        if 'model_state_dict' in checkpoint:
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-        else:
-            self.model.load_state_dict(checkpoint)
-        print(f"Loaded checkpoint from {checkpoint_path}")
+        state_dict = checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint
+
+        try:
+            self.model.load_state_dict(state_dict)
+        except RuntimeError as exc:
+            logger.warning(f"Failed to load checkpoint in strict mode: {exc}")
+            logger.info("Retrying with strict=False for leniency")
+            incompatible = self.model.load_state_dict(state_dict, strict=False)
+            if incompatible.missing_keys:
+                logger.info(f"Missing keys: {incompatible.missing_keys}")
+            if incompatible.unexpected_keys:
+                logger.info(f"Unexpected keys: {incompatible.unexpected_keys}")
+        logger.info(f"Loaded checkpoint from {checkpoint_path}")
 
     @staticmethod
     def _extract_prediction(model_output):
