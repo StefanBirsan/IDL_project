@@ -63,6 +63,32 @@ class Inference:
             return model_output[0]
         return model_output
 
+    def _forward_without_masking(self, x: torch.Tensor):
+        """
+        Run forward pass with MAE masking disabled.
+        Masking: intentionally hiding a large fraction of image patches
+        during forward pass then reconstructing missing content using
+        the remaining visible patches
+        This is good in training, however in inference
+        we want full-information output from the whole input image
+        thus we disable masking
+        """
+        original_model_mask_ratio = getattr(self.model, 'mask_ratio', None)
+        original_patch_mask_ratio = getattr(getattr(self.model, 'patch_embed', None), 'mask_ratio', None)
+
+        if original_model_mask_ratio is not None:
+            self.model.mask_ratio = 0.0
+        if original_patch_mask_ratio is not None:
+            self.model.patch_embed.mask_ratio = 0.0
+
+        try:
+            return self.model(x)
+        finally:
+            if original_model_mask_ratio is not None:
+                self.model.mask_ratio = original_model_mask_ratio
+            if original_patch_mask_ratio is not None:
+                self.model.patch_embed.mask_ratio = original_patch_mask_ratio
+
     @torch.no_grad()
     def infer(self, image: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
         """
@@ -87,7 +113,7 @@ class Inference:
         
         # Run inference
         with torch.no_grad():
-            model_output = self.model(image)
+            model_output = self._forward_without_masking(image)
             reconstructed = self._extract_prediction(model_output)
         
         return reconstructed.cpu()
@@ -113,7 +139,7 @@ class Inference:
         
         # Run inference
         with torch.no_grad():
-            model_output = self.model(images)
+            model_output = self._forward_without_masking(images)
             reconstructed = self._extract_prediction(model_output)
         
         return reconstructed.cpu()
