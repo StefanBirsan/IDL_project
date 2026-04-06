@@ -4,6 +4,7 @@ Complete architecture combining preprocessing, masking, flux guidance, and hybri
 """
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Tuple, Optional, Dict
 from .modules import (
     PhysicsInformedPreprocessing,
@@ -40,7 +41,9 @@ class PhysicsInformedMAE(nn.Module):
                  mlp_ratio: float = 4.0,
                  mask_ratio: float = 0.75,
                  attn_drop: float = 0.0,
-                 drop_path: float = 0.1):
+                 drop_path: float = 0.1,
+                 scale_factor: int = 1,
+                 sr_mode: bool = False):
         super().__init__()
         
         # Configuration
@@ -50,6 +53,15 @@ class PhysicsInformedMAE(nn.Module):
         self.embed_dim = embed_dim
         self.num_patches = (img_size // patch_size) ** 2
         self.mask_ratio = mask_ratio
+        self.scale_factor = scale_factor
+        self.sr_mode = sr_mode
+        
+        # SR mode configuration
+        if sr_mode and scale_factor > 1:
+            import math
+            self.num_upsamples = int(math.log2(scale_factor))
+        else:
+            self.num_upsamples = 0
         
         # ============ ENCODER COMPONENTS ============
         
@@ -131,11 +143,10 @@ class PhysicsInformedMAE(nn.Module):
             out_channels=patch_size * patch_size
         )
         
-        # Upsampling layers
-        num_upsamples = 0  # No upsampling needed for reconstruction
+        # Upsampling layers (num_upsamples determined by scale_factor in SR mode)
         self.upsample_layers = nn.ModuleList([
             PixelShuffleUpsample(embed_dim, embed_dim, upscale_factor=2)
-            for _ in range(num_upsamples)
+            for _ in range(self.num_upsamples)
         ])
         
         # Output projection: from patch embedding to pixel values
@@ -160,21 +171,29 @@ class PhysicsInformedMAE(nn.Module):
     
     def forward(self,
                 x: torch.Tensor,
-                flux_weights: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, Dict]:
+                flux_weights: Optional[torch.Tensor] = None,
+                sr_mode: Optional[bool] = None) -> Tuple[torch.Tensor, Dict]:
         """
-        Forward pass
+        Forward pass with optional Super-Resolution mode
         
         Args:
             x: Input image (B, C, H, W)
             flux_weights: Pre-calculated flux weights (B, num_patches) [optional]
+            sr_mode: If True, perform SR upsampling (default: use self.sr_mode)
         Returns:
-            reconstructed: Reconstructed image (B, C, H, W)
+            reconstructed: Reconstructed image
+                - If sr_mode=False: (B, C, H, W) same size as input
+                - If sr_mode=True: (B, C, H*scale, W*scale) HR upsampled
             aux_outputs: Dict containing:
                 - mask: Binary mask (B, num_patches)
                 - edge_map: Edge map from preprocessing
                 - flux_map: Generated flux guidance map
                 - latent: Encoded latent (B, N, embed_dim)
+                - patches_reconstructed: Patch representations
         """
+        if sr_mode is None:
+            sr_mode = self.sr_mode
+        
         B, C, H, W = x.shape
         
         # ============ PREPROCESSING ============
@@ -209,9 +228,6 @@ class PhysicsInformedMAE(nn.Module):
         # ============ DECODER ============
         
         # Expand encoded features to all patches
-        # encoded: (B, N_visible+1, embed_dim)
-        # We need to reconstruct full patch sequence
-        
         x_decode = encoded[:, 1:, :]  # Remove class token (B, N_visible, embed_dim)
         
         # Create mask tokens for masked patches
@@ -237,19 +253,48 @@ class PhysicsInformedMAE(nn.Module):
         
         # ============ RECONSTRUCTION ============
         
-        # Project patches back to pixel values
-        patches_reconstructed = self.output_projection(x_decode)  # (B, num_patches, patch_size^2)
+        if not sr_mode:
+            # ===== LEGACY MODE: LR Reconstruction =====
+            # Project patches back to pixel values
+            patches_reconstructed = self.output_projection(x_decode)  # (B, num_patches, patch_size^2)
+            
+            # Reshape to image (same size as input)
+            reconstructed = patches_reconstructed.view(
+                B,
+                H // self.patch_size,
+                W // self.patch_size,
+                self.patch_size,
+                self.patch_size
+            )
+            reconstructed = reconstructed.permute(0, 3, 4, 1, 2).contiguous()
+            reconstructed = reconstructed.view(B, C, H, W)
         
-        # Reshape to image
-        reconstructed = patches_reconstructed.view(
-            B,
-            H // self.patch_size,
-            W // self.patch_size,
-            self.patch_size,
-            self.patch_size
-        )
-        reconstructed = reconstructed.permute(0, 3, 4, 1, 2).contiguous()
-        reconstructed = reconstructed.view(B, C, H, W)
+        else:
+            # ===== SR MODE: HR Upsampling Reconstruction =====
+            # Use standard reconstruction output then upscale
+            
+            # Project patches back to pixel values
+            patches_reconstructed = self.output_projection(x_decode)  # (B, num_patches, patch_size^2)
+            
+            # Reshape to image (LR size first)
+            reconstructed = patches_reconstructed.view(
+                B,
+                H // self.patch_size,
+                W // self.patch_size,
+                self.patch_size,
+                self.patch_size
+            )
+            reconstructed = reconstructed.permute(0, 3, 4, 1, 2).contiguous()
+            reconstructed = reconstructed.view(B, C, H, W)
+            
+            # Upscale to HR using bilinear interpolation
+            reconstructed = F.interpolate(
+                reconstructed,
+                scale_factor=self.scale_factor,
+                mode='bilinear',
+                align_corners=False
+            )
+            # reconstructed is now (B, C, H*scale, W*scale)
         
         # ============ AUX OUTPUTS ============
         aux_outputs = {
@@ -262,6 +307,36 @@ class PhysicsInformedMAE(nn.Module):
         
         return reconstructed, aux_outputs
     
+    def get_flux_loss(self,
+                      aux_outputs: Dict,
+                      flux_map_target: Optional[torch.Tensor] = None,
+                      mode: str = "sparsity") -> torch.Tensor:
+        """
+        Compute flux loss with configurable modes
+        
+        Args:
+            aux_outputs: Auxiliary outputs from forward pass
+            flux_map_target: Target flux map (for "target" mode)
+            mode: Loss mode - "sparsity" (regularize to sparse) or "target" (consistency loss)
+        Returns:
+            loss_flux: Scalar loss tensor
+        """
+        flux_map = aux_outputs['flux_map']  # (B, 1, H_p, W_p)
+        flux_weights = flux_map.squeeze(1).flatten(1)  # (B, num_patches)
+        
+        if mode == "target" and flux_map_target is not None:
+            # Flux consistency loss against target
+            loss_flux = torch.mean(
+                flux_weights * torch.abs(flux_map - flux_map_target)
+            )
+        else:
+            # Default: sparsity regularization (encourage concentration)
+            loss_flux = torch.mean(
+                torch.sum(flux_weights ** 2, dim=1)
+            )
+        
+        return loss_flux
+    
     def get_loss(self,
                  inputs: torch.Tensor,
                  reconstructed: torch.Tensor,
@@ -269,7 +344,7 @@ class PhysicsInformedMAE(nn.Module):
                  flux_map_target: Optional[torch.Tensor] = None,
                  lambda_flux: float = 0.01) -> Tuple[torch.Tensor, Dict]:
         """
-        Calculate total loss: L_recon + λ * L_flux
+        Calculate total loss for legacy mode: L_recon + λ * L_flux
         
         Args:
             inputs: Original input images (B, C, H, W)
@@ -282,7 +357,7 @@ class PhysicsInformedMAE(nn.Module):
             loss_dict: Dictionary with individual loss components
         """
         # ============ RECONSTRUCTION LOSS ============
-        # MSE computed only on masked patches
+        # MSE computed only on masked patches (true MAE)
         
         mask = aux_outputs['mask']  # (B, num_patches)
         B, C, H, W = inputs.shape
@@ -295,27 +370,18 @@ class PhysicsInformedMAE(nn.Module):
         
         reconstructed_patches = aux_outputs['patches_reconstructed']  # (B, num_patches, patch_size^2)
         
-        # L_recon: MSE only on masked regions
-        loss_recon = torch.mean((reconstructed_patches - input_patches) ** 2)
+        # L_recon: MSE only on masked regions (true MAE reconstruction)
+        # Apply mask: 1 for masked patches, 0 for visible
+        mask_expanded = mask.unsqueeze(-1).float()  # (B, num_patches, 1)
+        masked_loss = ((reconstructed_patches - input_patches) ** 2) * mask_expanded
+        loss_recon = masked_loss.sum() / (mask.sum().float() + 1e-8)  # Normalize by number of masked patches
         
         # ============ FLUX CONSISTENCY LOSS ============
-        # Weighting by the generated flux map
-        
-        flux_map = aux_outputs['flux_map']  # (B, 1, H_p, W_p) where H_p = H/patch_size
-        flux_weights = flux_map.squeeze(1).flatten(1)  # (B, num_patches)
-        
-        if flux_map_target is not None:
-            # If target flux map is provided
-            flux_consistency = torch.mean(
-                flux_weights * (flux_map - flux_map_target).abs()
-            )
-        else:
-            # Regularize flux map to be sparse (encourage concentration)
-            flux_consistency = torch.mean(
-                torch.sum(flux_weights ** 2, dim=1)
-            )
-        
-        loss_flux = flux_consistency
+        loss_flux = self.get_flux_loss(
+            aux_outputs=aux_outputs,
+            flux_map_target=flux_map_target,
+            mode="sparsity" if flux_map_target is None else "target"
+        )
         
         # ============ TOTAL LOSS ============
         total_loss = loss_recon + lambda_flux * loss_flux
@@ -330,7 +396,11 @@ class PhysicsInformedMAE(nn.Module):
 
 
 def create_physics_informed_mae(img_size: int = 64, **kwargs) -> PhysicsInformedMAE:
-    """Factory function to create Physics-Informed MAE"""
+    """
+    Factory function to create Physics-Informed MAE
+    
+    Supports both legacy and SR mode depending on kwargs
+    """
     defaults = {
         "img_size": img_size,
         "patch_size": 4,
@@ -341,6 +411,8 @@ def create_physics_informed_mae(img_size: int = 64, **kwargs) -> PhysicsInformed
         "num_heads": 12,
         "mlp_ratio": 4.0,
         "mask_ratio": 0.75,
+        "scale_factor": 1,      # NEW: Default to no upsampling (legacy mode)
+        "sr_mode": False,       # NEW: Default to legacy mode
     }
     defaults.update(kwargs)  # user-provided args override defaults
     return PhysicsInformedMAE(**defaults)

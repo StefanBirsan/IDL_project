@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Union, Tuple, Optional, Dict, Literal
 from PIL import Image
 import matplotlib.pyplot as plt
+import logging
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+logger.addHandler(handler)
 
 class Inference:
     """Inference engine for Physics-Informed MAE models"""
@@ -37,11 +42,19 @@ class Inference:
     def _load_checkpoint(self, checkpoint_path: str):
         """Load model from checkpoint"""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        if 'model_state_dict' in checkpoint:
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-        else:
-            self.model.load_state_dict(checkpoint)
-        print(f"Loaded checkpoint from {checkpoint_path}")
+        state_dict = checkpoint['model_state_dict'] if 'model_state_dict' in checkpoint else checkpoint
+
+        try:
+            self.model.load_state_dict(state_dict)
+        except RuntimeError as exc:
+            logger.warning(f"Failed to load checkpoint in strict mode: {exc}")
+            logger.info("Retrying with strict=False for leniency")
+            incompatible = self.model.load_state_dict(state_dict, strict=False)
+            if incompatible.missing_keys:
+                logger.info(f"Missing keys: {incompatible.missing_keys}")
+            if incompatible.unexpected_keys:
+                logger.info(f"Unexpected keys: {incompatible.unexpected_keys}")
+        logger.info(f"Loaded checkpoint from {checkpoint_path}")
 
     @staticmethod
     def _extract_prediction(model_output):
@@ -49,6 +62,32 @@ class Inference:
         if isinstance(model_output, (tuple, list)):
             return model_output[0]
         return model_output
+
+    def _forward_without_masking(self, x: torch.Tensor):
+        """
+        Run forward pass with MAE masking disabled.
+        Masking: intentionally hiding a large fraction of image patches
+        during forward pass then reconstructing missing content using
+        the remaining visible patches
+        This is good in training, however in inference
+        we want full-information output from the whole input image
+        thus we disable masking
+        """
+        original_model_mask_ratio = getattr(self.model, 'mask_ratio', None)
+        original_patch_mask_ratio = getattr(getattr(self.model, 'patch_embed', None), 'mask_ratio', None)
+
+        if original_model_mask_ratio is not None:
+            self.model.mask_ratio = 0.0
+        if original_patch_mask_ratio is not None:
+            self.model.patch_embed.mask_ratio = 0.0
+
+        try:
+            return self.model(x)
+        finally:
+            if original_model_mask_ratio is not None:
+                self.model.mask_ratio = original_model_mask_ratio
+            if original_patch_mask_ratio is not None:
+                self.model.patch_embed.mask_ratio = original_patch_mask_ratio
 
     @torch.no_grad()
     def infer(self, image: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
@@ -74,7 +113,7 @@ class Inference:
         
         # Run inference
         with torch.no_grad():
-            model_output = self.model(image)
+            model_output = self._forward_without_masking(image)
             reconstructed = self._extract_prediction(model_output)
         
         return reconstructed.cpu()
@@ -100,7 +139,7 @@ class Inference:
         
         # Run inference
         with torch.no_grad():
-            model_output = self.model(images)
+            model_output = self._forward_without_masking(images)
             reconstructed = self._extract_prediction(model_output)
         
         return reconstructed.cpu()

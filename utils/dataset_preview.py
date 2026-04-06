@@ -5,6 +5,8 @@ import os
 from astropy.visualization import ZScaleInterval, ImageNormalize
 import matplotlib.pyplot as plt
 
+from utils import NumpyAstronomicalDataset
+
 
 def z_scale_normalize(image, contrast=0.9):
     """
@@ -71,7 +73,11 @@ if __name__ == "__main__":
     LR_PATH = Path("dataset/data/x2/eval_lr_patch")
     HR_PATH = Path("dataset/data/x2/eval_hr_patch")
 
+    lr_choice = LR_PATH / random.choice(os.listdir(LR_PATH))
+    hr_filename = NumpyAstronomicalDataset.get_hr_filename_from_lr(lr_choice.name)
+    hr_choice = HR_PATH / hr_filename
+
     visualize_sample(
-        hr_path=HR_PATH / random.choice(os.listdir(HR_PATH)),
-        lr_path=LR_PATH / random.choice(os.listdir(LR_PATH)),
+        lr_path=lr_choice,
+        hr_path=hr_choice
     )
