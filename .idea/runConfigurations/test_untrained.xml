@@ -15,7 +15,7 @@
     <module name="" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
     <option name="RUN_TOOL" value="true" />
-    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/utils/test_untrained.py" />
+    <option name="SCRIPT_NAME" value="U:\Year_III\DeepLearning\Project\training\inference\physics_informed_mae\test_untrained.py" />
     <option name="PARAMETERS" value="" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <option name="EMULATE_TERMINAL" value="false" />

@@ -21,8 +21,6 @@ import sys
 from pathlib import Path
 
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -30,7 +28,7 @@ sys.path.insert(0, str(project_root))
 
 from training.core.config_srcnn import SRCNNTrainingConfig
 from training.core.trainer_srcnn import SRCNNTrainer
-from training.train_utils.face_sr_dataset import get_face_sr_dataloaders
+from training.train_utils.srcnn.face_sr_dataset import get_face_sr_dataloaders
 
 
 def parse_arguments():

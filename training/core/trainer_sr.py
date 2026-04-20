@@ -3,7 +3,6 @@ Super-Resolution Trainer for Physics-Informed Masked Vision Transformer
 Optimized for true LR -> HR upscaling with advanced loss composition
 """
 import torch
-import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from pathlib import Path
@@ -14,8 +13,8 @@ from training.train_utils import create_physics_informed_mae
 from training.core.config_sr import SRTrainingConfig
 from training.managers import CheckpointManager, ModelExporter
 from training.steps import MetricTracker
-from training.steps.train_step_sr import train_one_epoch_sr
-from training.steps.eval_step_sr import eval_one_epoch_sr
+from training.steps.fisr.train_step_sr import train_one_epoch_sr
+from training.steps.fisr.eval_step_sr import eval_one_epoch_sr
 
 
 class SRTrainer:

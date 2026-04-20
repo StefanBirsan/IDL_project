@@ -11,6 +11,7 @@ from typing import Optional, Tuple, Dict, Callable
 from PIL import Image
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
+import sys
 
 
 class FaceSuperResolutionDataset(Dataset):
@@ -37,7 +38,8 @@ class FaceSuperResolutionDataset(Dataset):
         4. Crop to crop_size x crop_size to avoid border effects
         5. Apply augmentations (rotation, flip, etc.)
     """
-    
+    # TODO: current dataset only has a training split
+    #  so remove split param
     def __init__(self,
                  data_dir: str,
                  split: str = 'train',
@@ -71,24 +73,8 @@ class FaceSuperResolutionDataset(Dataset):
         self.augmentation = augmentation
         
         # Find images - try to detect directory structure
-        all_images = self._find_images()
-        
-        if len(all_images) == 0:
-            raise ValueError(f"No images found in {self.data_dir}")
-        
-        # Split images for train/val if needed
-        if self.split in ['train', 'val']:
-            np.random.seed(42)  # Reproducible split
-            all_images = sorted(all_images)
-            num_train = int(len(all_images) * train_fraction)
-            
-            if self.split == 'train':
-                self.image_paths = all_images[:num_train]
-            else:  # val
-                self.image_paths = all_images[num_train:]
-        else:
-            self.image_paths = all_images
-        
+        self.image_paths = self._find_images()
+
         if len(self.image_paths) == 0:
             raise ValueError(f"No images found for split '{split}'")
         
@@ -102,28 +88,8 @@ class FaceSuperResolutionDataset(Dataset):
         Returns:
             List of image paths
         """
-        # Try split directory structure first
-        split_dir = self.data_dir / self.split
-        if split_dir.exists():
-            images = sorted(set(
-                list(split_dir.glob('*.jpg')) +
-                list(split_dir.glob('*.jpeg')) +
-                list(split_dir.glob('*.png')) +
-                list(split_dir.glob('*.JPG')) +
-                list(split_dir.glob('*.PNG'))
-            ))
-            if images:
-                return images
-        
-        # Try single directory structure
-        images = sorted(set(
-            list(self.data_dir.glob('*.jpg')) +
-            list(self.data_dir.glob('*.jpeg')) +
-            list(self.data_dir.glob('*.png')) +
-            list(self.data_dir.glob('*.JPG')) +
-            list(self.data_dir.glob('*.PNG'))
-        ))
-        
+        images = sorted(set(self.data_dir.glob('*.png')))
+
         return images
     
     def __len__(self) -> int:
@@ -197,6 +163,59 @@ class FaceSuperResolutionDataset(Dataset):
         return {
             'lr_image': lr_tensor,    # (3, crop_size, crop_size)
             'hr_image': hr_tensor,    # (3, crop_size, crop_size)
+        }
+
+    def get_random_sample(self, scale_factor: int) -> Dict[str, torch.Tensor]:
+        """Get a random sample from the dataset"""
+
+        # get random index
+        idx = np.random.randint(0, len(self))
+        chosen_path = self.image_paths[idx]
+
+        # apply all downscaling steps except cropping 
+        # 1) Load image
+        try:
+            hr_image = Image.open(chosen_path).convert('RGB')
+        except Exception as e:
+            print(f"Error loading image {chosen_path}: {e}")
+            sys.exit(1)
+
+        # 2) Convert to numpy array and float32
+        hr_array = np.array(hr_image, dtype=np.float32)
+        
+        # 3) Normalize to [0, 1]
+        if self.normalize:
+            hr_array = hr_array / 255.0
+        
+        # 4) Create HR image tensor (C, H, W) format
+        hr_tensor = torch.from_numpy(hr_array).permute(2, 0, 1)  # (3, H, W)
+        
+        # 5) Create LR image
+        # 5.1) Get the image size
+        _, h, w = hr_tensor.shape
+        
+        # 5.2) Make sure image size is divisible by scale factor
+        h_lr = (h // scale_factor) * scale_factor
+        w_lr = (w // scale_factor) * scale_factor
+        
+        # Crop to divisible size if needed
+        if h > h_lr or w > w_lr:
+            hr_tensor = hr_tensor[:, :h_lr, :w_lr]
+        
+        # 5.3) Downscale to get LR
+        hr_pil = TF.to_pil_image(hr_tensor)
+        lr_h, lr_w = h_lr // scale_factor, w_lr // scale_factor
+        lr_pil = hr_pil.resize((lr_w, lr_h), Image.BICUBIC)
+        
+        # 5.4) Upscale back to original size using bicubic
+        lr_upscaled_pil = lr_pil.resize((w_lr, h_lr), Image.BICUBIC)
+        
+        # Convert back to tensor
+        lr_tensor = transforms.ToTensor()(lr_upscaled_pil)  # (3, H, W), normalized to [0, 1]
+
+        return {
+            'lr_image': lr_tensor,    # (3, H, W)
+            'hr_image': hr_tensor,    # (3, H, W)
         }
     
     def _random_crop(self, lr: torch.Tensor, hr: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:

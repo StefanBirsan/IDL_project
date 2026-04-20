@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Optional, Dict
-from .modules import (
+from training.train_utils.fisr.modules import (
     PhysicsInformedPreprocessing,
     MaskedPatchEmbedding,
     FluxGuidanceGeneration,

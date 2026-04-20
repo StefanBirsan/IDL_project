@@ -239,7 +239,7 @@ def example_single_image_sr():
     output_path = 'sample_images/sr_face.png'
     
     # Initialize
-    sr = SRCNNInference(checkpoint_path, device='cuda')
+    sr = SRCNNInference(checkpoint_path, device='cuda' if torch.cuda.is_available() else 'cpu')
     
     # Super-resolve
     sr_image = sr.super_resolve(input_image, scale_factor=2)
@@ -261,7 +261,7 @@ def example_batch_processing():
     input_dir = 'dataset/ffhq/test'
     output_dir = 'results/srcnn_sr'
     
-    sr = SRCNNInference(checkpoint_path, device='cuda')
+    sr = SRCNNInference(checkpoint_path, device='cuda' if torch.cuda.is_available() else 'cpu')
     sr.batch_super_resolve(input_dir, output_dir, scale_factor=2)
 
 

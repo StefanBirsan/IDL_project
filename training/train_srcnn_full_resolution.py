@@ -21,7 +21,6 @@ import argparse
 import sys
 from pathlib import Path
 import json
-from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -34,7 +33,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from training.train_utils.srcnn import SRCNN
-from training.train_utils.full_resolution_dataset import get_full_resolution_dataloaders
+from training.train_utils.srcnn.full_resolution_dataset import get_full_resolution_dataloaders
 from training.core.config_srcnn import SRCNNTrainingConfig
 
 

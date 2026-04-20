@@ -1,5 +1,5 @@
 """Dataset module"""
-from .numpy_dataset import (
+from training.datasets.STAR_dataset import (
     NumpyAstronomicalDataset,
     DataLoaderFactory,
     get_dataset,
