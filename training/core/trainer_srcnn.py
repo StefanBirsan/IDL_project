@@ -251,14 +251,29 @@ class SRCNNTrainer:
                       f"Val PSNR: {val_metrics['val_psnr']:.2f} | "
                       f"Val SSIM: {val_metrics['val_ssim']:.4f}")
                 
-                # Save best model
+                # Check if loss improved, if so save checkpoint
                 if val_metrics['val_loss'] < self.best_val_loss:
                     self.best_val_loss = val_metrics['val_loss']
-                    self._save_checkpoint(is_best=True)
+                    self.checkpoint_manager.save(
+                        epoch=self.current_epoch,
+                        model=self.model,
+                        optimizer=self.optimizer,
+                        scheduler=None,
+                        config=self.config,
+                        global_step=self.global_step,
+                        is_best=True
+                    )
             
             # Save periodic checkpoint
             if (epoch + 1) % self.config.save_interval == 0:
-                self._save_checkpoint(is_best=False)
+                self.checkpoint_manager.save(
+                    epoch=self.current_epoch,
+                    model=self.model,
+                    optimizer=self.optimizer,
+                    scheduler=None,
+                    config=self.config.to_dict(),
+                    global_step=self.global_step,
+                )
         
         print(f"\nTraining completed!")
         self._save_training_history()
