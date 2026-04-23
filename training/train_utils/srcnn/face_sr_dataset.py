@@ -326,46 +326,38 @@ def get_face_sr_dataloaders(
         Tuple of (train_loader, val_loader)
     """
     # Training dataset
-    train_dataset = FaceSuperResolutionDataset(
+    training_dataset = FaceSuperResolutionDataset(
         data_dir=data_dir,
         split='train',
         scale_factor=scale_factor,
         crop_size=crop_size,
         normalize=normalize,
-        augmentation={'rotate': True, 'flip': True, 'brightness': True},
         train_fraction=train_fraction
     )
     
     train_loader = DataLoader(
-        train_dataset,
+        training_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
         pin_memory=True
     )
     
-    # Validation dataset - only create if train_fraction < 1.0 or val directory exists
-    val_loader = None
-    val_dir = Path(data_dir) / 'val'
-    
-    if val_dir.exists() or train_fraction < 1.0:
-        val_dataset = FaceSuperResolutionDataset(
-            data_dir=data_dir,
-            split='val',
-            scale_factor=scale_factor,
-            crop_size=crop_size,
-            normalize=normalize,
-            augmentation={k: False for k in ['rotate', 'flip', 'brightness']},  # No augmentation for val
-            train_fraction=train_fraction
-        )
+    val_dataset = FaceSuperResolutionDataset(
+        data_dir=data_dir,
+        split='val',
+        scale_factor=scale_factor,
+        crop_size=crop_size,
+        normalize=normalize,
+        train_fraction=train_fraction
+    )
         
-        if len(val_dataset) > 0:
-            val_loader = DataLoader(
-                val_dataset,
-                batch_size=batch_size,
-                shuffle=False,
-                num_workers=num_workers,
-                pin_memory=True
-            )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True
+    )
     
     return train_loader, val_loader
