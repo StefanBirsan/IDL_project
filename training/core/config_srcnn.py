@@ -43,7 +43,7 @@ class SRCNNTrainingConfig:
     num_workers: int = 4                     # Data loading workers
     
     # ============ VALIDATION & EVALUATION ============
-    val_interval: int = 5                    # Validate every N epochs
+    val_interval: int = 1                    # Validate every N epochs
     eval_metrics: List[str] = field(default_factory=lambda: ['psnr', 'ssim', 'mae'])
     
     # ============ CHECKPOINTING & EXPORT ============
@@ -78,38 +78,38 @@ class SRCNNTrainingConfig:
     def summary(self) -> str:
         """Pretty print configuration summary"""
         summary = f"""
-{'='*70}
-SRCNN Training Configuration
-{'='*70}
+          {'='*70}
+          SRCNN Training Configuration
+          {'='*70}
 
-MODEL:
-  - Name:                    {self.model_name}
-  - Scale Factor:            {self.scale_factor}x
-  - Intermediate Channels:   {self.intermediate_channels}
+          MODEL:
+            - Name:                    {self.model_name}
+            - Scale Factor:            {self.scale_factor}x
+            - Intermediate Channels:   {self.intermediate_channels}
 
-TRAINING:
-  - Batch Size:              {self.batch_size}
-  - Epochs:                  {self.num_epochs}
-  - Optimizer:               SGD with momentum={self.momentum}
-  - Learning Rates:          Layer 1-2: {self.lr_early_layers}, Layer 3: {self.lr_reconstruction_layer}
-  - Loss:                    {self.loss_function.upper()}
+          TRAINING:
+            - Batch Size:              {self.batch_size}
+            - Epochs:                  {self.num_epochs}
+            - Optimizer:               SGD with momentum={self.momentum}
+            - Learning Rates:          Layer 1-2: {self.lr_early_layers}, Layer 3: {self.lr_reconstruction_layer}
+            - Loss:                    {self.loss_function.upper()}
 
-DATA:
-  - Dataset Directory:       {self.data_dir}
-  - Crop Size:               {self.crop_size}x{self.crop_size}
-  - Upscale Method:          {self.upscale_method}
-  - Data Workers:            {self.num_workers}
+          DATA:
+            - Dataset Directory:       {self.data_dir}
+            - Crop Size:               {self.crop_size}x{self.crop_size}
+            - Upscale Method:          {self.upscale_method}
+            - Data Workers:            {self.num_workers}
 
-CHECKPOINTING:
-  - Save Directory:          {self.save_dir}
-  - Save Interval:           Every {self.save_interval} epochs
-  - Export ONNX:             {self.export_final_model}
+          CHECKPOINTING:
+            - Save Directory:          {self.save_dir}
+            - Save Interval:           Every {self.save_interval} epochs
+            - Export ONNX:             {self.export_final_model}
 
-HARDWARE:
-  - Device:                  {self.device}
-  - Seed:                    {self.seed}
-  - Mixed Precision:         {self.mixed_precision}
+          HARDWARE:
+            - Device:                  {self.device}
+            - Seed:                    {self.seed}
+            - Mixed Precision:         {self.mixed_precision}
 
-{'='*70}
+          {'='*70}
         """
         return summary

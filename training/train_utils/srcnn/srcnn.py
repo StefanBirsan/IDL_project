@@ -9,8 +9,6 @@ Architecture: 9-5-5 configuration optimized for face images
 """
 import torch
 import torch.nn as nn
-from typing import Optional
-
 
 class SRCNN(nn.Module):
     """
@@ -114,8 +112,7 @@ class SRCNN(nn.Module):
         # Reconstruction
         out = self.layer3(out)  # (batch, 3, H, W)
         
-        # Add residual connection: enhance the upscaled input
-        # This makes the network learn the high-frequency details
+        # The network stores only the residual connection, i.e. the changes made to the input
         out = x + out
         
         return out

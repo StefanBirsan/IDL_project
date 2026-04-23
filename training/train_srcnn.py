@@ -15,17 +15,10 @@ Usage:
     uv run training/train_srcnn.py --data-dir dataset/ffhq --scale-factor 4 --crop-size 33 \\
         --batch-size 128 --num-epochs 200 --lr-early 1e-4 --lr-recon 1e-5
 """
-
 import argparse
-import sys
 from pathlib import Path
 
 import torch
-
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
 from training.core.config_srcnn import SRCNNTrainingConfig
 from training.core.trainer_srcnn import SRCNNTrainer
 from training.train_utils.srcnn.face_sr_dataset import get_face_sr_dataloaders
@@ -37,15 +30,15 @@ def parse_arguments():
         description='SRCNN Face Super-Resolution Training',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  # Basic training with default settings
-  python training/train_srcnn.py --data-dir dataset/ffhq
-  
-  # 4x super-resolution with custom batch size
-  python training/train_srcnn.py --data-dir dataset/ffhq --scale-factor 4 --batch-size 32
-  
-  # Resume from checkpoint
-  python training/train_srcnn.py --data-dir dataset/ffhq --resume checkpoints/srcnn/checkpoint_epoch_0050.pth
+            Examples:
+            # Basic training with default settings
+            python training/train_srcnn.py --data-dir dataset/ffhq
+            
+            # 4x super-resolution with custom batch size
+            python training/train_srcnn.py --data-dir dataset/ffhq --scale-factor 4 --batch-size 32
+            
+            # Resume from checkpoint
+            python training/train_srcnn.py --data-dir dataset/ffhq --resume checkpoints/srcnn/checkpoint_epoch_0050.pth
         """
     )
     
@@ -68,18 +61,10 @@ Examples:
                         help='Batch size (default: 64)')
     parser.add_argument('--num-epochs', type=int, default=100,
                         help='Number of epochs (default: 100)')
-    
-    # ============ LEARNING RATE ARGUMENTS ============
-    parser.add_argument('--lr-early', type=float, default=1e-4,
-                        help='Learning rate for layers 1-2 (default: 1e-4)')
-    parser.add_argument('--lr-recon', type=float, default=1e-5,
-                        help='Learning rate for layer 3 (default: 1e-5)')
-    parser.add_argument('--momentum', type=float, default=0.9,
-                        help='SGD momentum (default: 0.9)')
-    
+
     # ============ VALIDATION ARGUMENTS ============
-    parser.add_argument('--val-interval', type=int, default=5,
-                        help='Validate every N epochs (default: 5)')
+    parser.add_argument('--val-interval', type=int, default=1,
+                        help='Validate every N epochs (default: 1)')
     
     # ============ CHECKPOINTING ARGUMENTS ============
     parser.add_argument('--save-dir', type=str, default='checkpoints/srcnn',
@@ -118,10 +103,7 @@ def create_config_from_args(args) -> SRCNNTrainingConfig:
         # Training
         batch_size=args.batch_size,
         num_epochs=args.num_epochs,
-        lr_early_layers=args.lr_early,
-        lr_reconstruction_layer=args.lr_recon,
-        momentum=args.momentum,
-        
+
         # Data
         data_dir=args.data_dir,
         num_workers=args.num_workers,
