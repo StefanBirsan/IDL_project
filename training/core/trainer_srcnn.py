@@ -11,7 +11,7 @@ import json
 import numpy as np
 from tqdm import tqdm
 from typing import Optional, Tuple, Dict, Any
-import sys
+from skimage.metrics import structural_similarity, peak_signal_noise_ratio
 
 from training.train_utils.srcnn import SRCNN
 from training.core.config_srcnn import SRCNNTrainingConfig
@@ -58,6 +58,7 @@ class SRCNNTrainer:
         # Tracking
         self.current_epoch = 0
         self.global_step = 0
+        # Initialize best loss with maximum float value
         self.best_val_loss = float('inf')
         self.training_history = {
             'train_loss': [],
@@ -139,11 +140,12 @@ class SRCNNTrainer:
             lr_image = batch['lr_image'].to(self.device)  # (B, 3, H, W) - bicubic upscaled
             hr_image = batch['hr_image'].to(self.device)  # (B, 3, H, W) - ground truth
             
-            # Forward pass
+            # Reset optimizer gradients
             self.optimizer.zero_grad()
+            # Forward pass on input LR
             output = self.model(lr_image)
             
-            # Compute loss (MSE between output and high-res)
+            # Compute loss (MSE between output and HR)
             loss = self.criterion(output, hr_image)
             
             # Backward pass
@@ -192,14 +194,15 @@ class SRCNNTrainer:
             
             total_loss += loss.item()
             
-            # Calculate PSNR: 20 * log10(MAX_VAL / sqrt(MSE))
-            mse = torch.mean((output - hr_image) ** 2).item()
+            # Calculate PSNR
+            mse = loss.item()
             if mse > 0:
-                psnr = 20 * np.log10(1.0 / np.sqrt(mse))  # Assuming normalized to [0, 1]
+                psnr = peak_signal_noise_ratio(hr_image.cpu().numpy(), output.cpu().numpy(), data_range=1.0)
                 total_psnr += psnr
             
-            # Calculate SSIM (simplified)
-            total_ssim += self._compute_ssim(output, hr_image).item()
+            # Calculate SSIM
+            ssim = structural_similarity(hr_image.cpu().numpy(), output.cpu().numpy(), data_range=1.0)
+            total_ssim += ssim
             
             num_batches += 1
         
@@ -210,42 +213,7 @@ class SRCNNTrainer:
         }
         
         return metrics
-    
-    @staticmethod
-    def _compute_ssim(img1: torch.Tensor, img2: torch.Tensor, window_size: int = 11) -> torch.Tensor:
-        """
-        Compute SSIM between two images (simplified implementation).
-        
-        Args:
-            img1: First image tensor
-            img2: Second image tensor
-            window_size: Window size for SSIM computation
-            
-        Returns:
-            SSIM value
-        """
-        # Simplified SSIM: using Gaussian kernel approach
-        # For production, use proper SSIM implementation (torchmetrics, skimage)
-        blur = nn.AvgPool2d(window_size, stride=1, padding=window_size//2)
-        mu1 = blur(img1)
-        mu2 = blur(img2)
-        
-        mu1_sq = mu1 * mu1
-        mu2_sq = mu2 * mu2
-        mu1_mu2 = mu1 * mu2
-        
-        sigma1_sq = blur(img1 * img1) - mu1_sq
-        sigma2_sq = blur(img2 * img2) - mu2_sq
-        sigma12 = blur(img1 * img2) - mu1_mu2
-        
-        c1 = 0.01 ** 2
-        c2 = 0.03 ** 2
-        
-        ssim_map = ((2 * mu1_mu2 + c1) * (2 * sigma12 + c2)) / \
-                   ((mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2) + 1e-8)
-        
-        return torch.mean(ssim_map)
-    
+
     def train(self,
               train_loader: DataLoader,
               val_loader: Optional[DataLoader] = None) -> Dict[str, list]:
