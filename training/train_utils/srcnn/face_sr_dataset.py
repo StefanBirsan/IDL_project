@@ -71,7 +71,6 @@ class FaceSuperResolutionDataset(Dataset):
                  scale_factor: int = 2,
                  crop_size: int = 33,
                  normalize: bool = True,
-                 augmentation: Dict[str, bool] = None,
                  train_fraction: float = 0.8):
         """
         Initialize dataset.
@@ -82,7 +81,6 @@ class FaceSuperResolutionDataset(Dataset):
             scale_factor: Super-resolution upscaling factor (2, 4, 8, etc.)
             crop_size: Size of patches to crop from images (33x33 is standard)
             normalize: Whether to normalize images to [0, 1]
-            augmentation: Dict of augmentation flags {'rotate': bool, 'flip': bool, 'brightness': bool}
             train_fraction: Fraction of images to use for training when splitting a single directory
         """
         self.data_dir = Path(data_dir)
@@ -91,11 +89,9 @@ class FaceSuperResolutionDataset(Dataset):
         self.crop_size = crop_size
         self.normalize = normalize
         self.train_fraction = train_fraction
-        
-        # Augmentation settings
-        if augmentation is None:
-            augmentation = {'rotate': True, 'flip': True, 'brightness': True}
-        self.augmentation = augmentation
+
+        self.train_paths = None
+        self.val_paths = None
 
         # The dataset directory must contain 'train' and 'val' subdirectories
         if not (self.data_dir / 'val').exists():
@@ -154,11 +150,7 @@ class FaceSuperResolutionDataset(Dataset):
         
         # ========== Crop to patch size ==========
         lr_tensor, hr_tensor = self._random_crop(lr_tensor, hr_tensor)
-        
-        # ========== Apply augmentations (training only) ==========
-        if self.split == 'train':
-            lr_tensor, hr_tensor = self._augment(lr_tensor, hr_tensor)
-        
+
         return {
             'lr_image': lr_tensor,    # (3, crop_size, crop_size)
             'hr_image': hr_tensor,    # (3, crop_size, crop_size)
