@@ -70,36 +70,36 @@ class SRCNNTrainer:
         
         self._print_info()
     
-    def _setup_optimizer(self) -> optim.SGD:
+    def _setup_optimizer(self) -> optim.Adam:
         """
-        Setup SGD optimizer with layer-specific learning rates.
-        Layer 1-2: lr=1e-4, Layer 3: lr=1e-5
+        Setup Adam optimizer with layer-specific learning rates.
+        Layer 1-2: lr=10^(-4) (default)
+        Layer 3: lr=10^(-5) (slower)
         
         Returns:
-            SGD optimizer with parameter groups
+            Adam optimizer with parameter groups
         """
         param_groups = [
             {
                 'params': self.model.layer1.parameters(),
-                'lr': self.config.lr_early_layers,
-                'name': 'layer1'
+                'lr': 1e-4,
+                'name': 'patch_extraction_representation_layer'
             },
             {
                 'params': self.model.layer2.parameters(),
-                'lr': self.config.lr_early_layers,
-                'name': 'layer2'
+                'lr': 1e-4,
+                'name': 'non_linear_mapping_layer'
             },
             {
                 'params': self.model.layer3.parameters(),
-                'lr': self.config.lr_reconstruction_layer,
-                'name': 'layer3'
+                'lr': 1e-5,
+                'name': 'reconstruction_layer'
             }
         ]
-        
-        optimizer = optim.SGD(
+
+        optimizer = optim.Adam(
             param_groups,
-            momentum=self.config.momentum,
-            weight_decay=self.config.weight_decay
+            lr=self.config.lr_early_layers,  # Base LR (overridden by param groups)
         )
         
         return optimizer
