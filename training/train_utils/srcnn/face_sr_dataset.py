@@ -3,11 +3,12 @@ Dataset loader for SRCNN Face Super-Resolution training.
 Handles bicubic upscaling, cropping, and augmentation.
 """
 import os
+import shutil
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Callable
+from typing import Optional, Tuple, Dict, Callable, Literal
 from PIL import Image
 import torchvision.transforms as transforms
 import torchvision.transforms.functional as TF
@@ -17,14 +18,8 @@ import sys
 class FaceSuperResolutionDataset(Dataset):
     """
     Dataset for SRCNN training with face images.
-    
-    Supports two directory structures:
-    
-    Option 1 - Single directory (recommended):
-        dataset/images1024x1024/
-            *.jpg or *.png (all images)
-    
-    Option 2 - Split directories:
+
+    Structure:
         dataset/
             train/
                 *.jpg or *.png
@@ -38,11 +33,41 @@ class FaceSuperResolutionDataset(Dataset):
         4. Crop to crop_size x crop_size to avoid border effects
         5. Apply augmentations (rotation, flip, etc.)
     """
-    # TODO: current dataset only has a training split
-    #  so remove split param
+
+    def create_splits(self):
+        # Create training and validation directories
+        train_dir = self.data_dir / 'train'
+        val_dir = self.data_dir / 'val'
+        train_dir.mkdir(parents=True, exist_ok=True)
+        val_dir.mkdir(parents=True, exist_ok=True)
+
+        # Detect all present images
+        contents = self._find_images()
+
+        train_size = int(len(contents) * self.train_fraction)
+        val_size = len(contents) - train_size
+
+        self.train_paths, self.val_paths = random_split(contents, [train_size, val_size])
+
+        # Save paths to files
+        with open(self.data_dir / 'train.txt') as f:
+            for path in self.train_paths:
+                f.write(str(path) + '\n')
+
+        with open(self.data_dir / 'val.txt') as f:
+            for path in self.val_paths:
+                f.write(str(path) + '\n')
+
+        # Move images to train/val directories
+        for path in contents:
+            if path in self.val_paths:
+                shutil.move(str(path), str(train_dir / path.name))
+            else:
+                shutil.move(str(path), str(val_dir / path.name))
+
     def __init__(self,
                  data_dir: str,
-                 split: str = 'train',
+                 split: str = Literal['train', 'val'],
                  scale_factor: int = 2,
                  crop_size: int = 33,
                  normalize: bool = True,
@@ -71,14 +96,10 @@ class FaceSuperResolutionDataset(Dataset):
         if augmentation is None:
             augmentation = {'rotate': True, 'flip': True, 'brightness': True}
         self.augmentation = augmentation
-        
-        # Find images - try to detect directory structure
-        self.image_paths = self._find_images()
 
-        if len(self.image_paths) == 0:
-            raise ValueError(f"No images found for split '{split}'")
-        
-        print(f"Loaded {len(self.image_paths)} images from {self.data_dir} ({split} split)")
+        # The dataset directory must contain 'train' and 'val' subdirectories
+        if not (self.data_dir / 'val').exists():
+            self.create_splits()
     
     def _find_images(self):
         """
@@ -105,16 +126,18 @@ class FaceSuperResolutionDataset(Dataset):
                 - 'lr_image': Bicubic-upscaled LR image (input to SRCNN)
                 - 'hr_image': Original HR image (ground truth)
         """
-        img_path = self.image_paths[idx]
-        
+        img_path = None
+        if self.split == 'train':
+            img_path = self.train_paths[idx]
+        else:
+            img_path = self.val_paths[idx]
+
         # Load image
         try:
             hr_image = Image.open(img_path).convert('RGB')
         except Exception as e:
             print(f"Error loading image {img_path}: {e}")
-            # Return a dummy image on failure
-            hr_image = Image.new('RGB', (self.crop_size * self.scale_factor,
-                                         self.crop_size * self.scale_factor))
+            sys.exit(1)
         
         # Convert to numpy array and float32
         hr_array = np.array(hr_image, dtype=np.float32)
@@ -127,31 +150,7 @@ class FaceSuperResolutionDataset(Dataset):
         hr_tensor = torch.from_numpy(hr_array).permute(2, 0, 1)  # (3, H, W)
         
         # ========== Create LR image ==========
-        # Step 1: Get the image size
-        _, h, w = hr_tensor.shape
-        
-        # Make sure image size is divisible by scale factor
-        h_lr = (h // self.scale_factor) * self.scale_factor
-        w_lr = (w // self.scale_factor) * self.scale_factor
-        
-        # Crop to divisible size if needed
-        if h > h_lr or w > w_lr:
-            hr_tensor = hr_tensor[:, :h_lr, :w_lr]
-        
-        # Step 2: Downscale to get LR
-        hr_pil = TF.to_pil_image(hr_tensor)
-        lr_h, lr_w = h_lr // self.scale_factor, w_lr // self.scale_factor
-        lr_pil = hr_pil.resize((lr_w, lr_h), Image.BICUBIC)
-        
-        # Step 3: Upscale back to original size using bicubic
-        lr_upscaled_pil = lr_pil.resize((w_lr, h_lr), Image.BICUBIC)
-        
-        # Convert back to tensor
-        lr_tensor = transforms.ToTensor()(lr_upscaled_pil)  # (3, H, W), normalized to [0, 1]
-        
-        # If original normalization was [0, 255], scale accordingly
-        if not self.normalize:
-            lr_tensor = lr_tensor * 255.0
+        lr_tensor = self.create_lr_from_hr(hr_tensor)  # (3, H, W), normalized to [0, 1]
         
         # ========== Crop to patch size ==========
         lr_tensor, hr_tensor = self._random_crop(lr_tensor, hr_tensor)
@@ -165,58 +164,64 @@ class FaceSuperResolutionDataset(Dataset):
             'hr_image': hr_tensor,    # (3, crop_size, crop_size)
         }
 
-    def get_random_sample(self, scale_factor: int) -> Dict[str, torch.Tensor]:
+    def get_random_sample(self) -> Dict[str, torch.Tensor]:
         """Get a random sample from the dataset"""
 
         # get random index
         idx = np.random.randint(0, len(self))
         chosen_path = self.image_paths[idx]
 
-        # apply all downscaling steps except cropping 
-        # 1) Load image
+        # Apply all downscaling steps except cropping
+        # Load image
         try:
             hr_image = Image.open(chosen_path).convert('RGB')
         except Exception as e:
             print(f"Error loading image {chosen_path}: {e}")
             sys.exit(1)
 
-        # 2) Convert to numpy array and float32
+        # Convert to numpy array and float32
         hr_array = np.array(hr_image, dtype=np.float32)
         
-        # 3) Normalize to [0, 1]
+        # Normalize to [0, 1] for neural network to process
         if self.normalize:
             hr_array = hr_array / 255.0
         
-        # 4) Create HR image tensor (C, H, W) format
+        # Create HR image tensor (C, H, W) format
         hr_tensor = torch.from_numpy(hr_array).permute(2, 0, 1)  # (3, H, W)
         
-        # 5) Create LR image
-        # 5.1) Get the image size
-        _, h, w = hr_tensor.shape
-        
-        # 5.2) Make sure image size is divisible by scale factor
-        h_lr = (h // scale_factor) * scale_factor
-        w_lr = (w // scale_factor) * scale_factor
-        
-        # Crop to divisible size if needed
-        if h > h_lr or w > w_lr:
-            hr_tensor = hr_tensor[:, :h_lr, :w_lr]
-        
-        # 5.3) Downscale to get LR
-        hr_pil = TF.to_pil_image(hr_tensor)
-        lr_h, lr_w = h_lr // scale_factor, w_lr // scale_factor
-        lr_pil = hr_pil.resize((lr_w, lr_h), Image.BICUBIC)
-        
-        # 5.4) Upscale back to original size using bicubic
-        lr_upscaled_pil = lr_pil.resize((w_lr, h_lr), Image.BICUBIC)
-        
-        # Convert back to tensor
-        lr_tensor = transforms.ToTensor()(lr_upscaled_pil)  # (3, H, W), normalized to [0, 1]
+        # Create LR image
+        lr_tensor = self.create_lr_from_hr(hr_tensor)
 
         return {
             'lr_image': lr_tensor,    # (3, H, W)
             'hr_image': hr_tensor,    # (3, H, W)
         }
+
+    def create_lr_from_hr(self,
+                          hr_tensor: torch.Tensor) -> torch.Tensor:
+        # Get the image size
+        _, h, w = hr_tensor.shape
+
+        # Make sure image size is divisible by scale factor
+        h_lr = (h // self.scale_factor) * self.scale_factor
+        w_lr = (w // self.scale_factor) * self.scale_factor
+
+        # Crop to divisible size if needed
+        if h > h_lr or w > w_lr:
+            hr_tensor = hr_tensor[:, :h_lr, :w_lr]
+
+        # Downscale to get LR
+        hr_pil = TF.to_pil_image(hr_tensor)
+        lr_h, lr_w = h_lr // self.scale_factor, w_lr // self.scale_factor
+        lr_pil = hr_pil.resize((lr_w, lr_h), Image.BICUBIC)
+
+        # Upscale back to original size using bicubic
+        lr_upscaled_pil = lr_pil.resize((w_lr, h_lr), Image.BICUBIC)
+
+        # Convert back to tensor
+        lr_tensor = transforms.ToTensor()(lr_upscaled_pil)  # (3, H, W), normalized to [0, 1]
+
+        return lr_tensor
     
     def _random_crop(self, lr: torch.Tensor, hr: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
