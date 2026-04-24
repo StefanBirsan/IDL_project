@@ -1,13 +1,3 @@
-"""
-SRCNN Inference Utilities
-
-Provides functions for:
-- Loading trained SRCNN models
-- Running super-resolution on single images
-- Batch processing
-- PSNR/SSIM evaluation
-"""
-
 import torch
 import torch.nn as nn
 from pathlib import Path
@@ -59,29 +49,29 @@ class SRCNNInference:
         
         return model
     
+    # TODO: This method should accept an already created LR image
+    #  not create one from a given HR image
     @torch.no_grad()
-    def super_resolve(self,
-                     image: Union[np.ndarray, str, Path],
-                     scale_factor: int = 2,
-                     upscale_method: str = 'bicubic') -> np.ndarray:
+    def infer(self,
+              image: Union[np.ndarray, str, Path],
+              scale_factor: int = 2) -> np.ndarray:
         """
         Apply super-resolution to an image.
         
         Args:
-            image: Input image (numpy array, file path, or PIL Image)
+            image: LR input image (as numpy array or file path)
             scale_factor: Super-resolution upscaling factor
-            upscale_method: 'bicubic' or 'bilinear' for initial upscaling
-            
         Returns:
-            Super-resolved image (numpy array, normalized to [0, 1])
+            Model super-resolution output (numpy array, normalized to [0, 1])
         """
-        # Load and preprocess image
+        # Load image
+        #  and process into floating-point format [0,1]
         if isinstance(image, (str, Path)):
             img_pil = Image.open(image).convert('RGB')
             img_array = np.array(img_pil, dtype=np.float32) / 255.0
         elif isinstance(image, np.ndarray):
             img_array = image.astype(np.float32)
-            if img_array.max() > 1.0:  # Assume [0, 255]
+            if img_array.max() > 1.0:
                 img_array = img_array / 255.0
         else:
             raise ValueError("Image must be file path or numpy array")
@@ -98,26 +88,22 @@ class SRCNNInference:
         # Create LR version and bicubic upscale
         img_pil = Image.fromarray((img_tensor[0].permute(1, 2, 0).numpy() * 255).astype(np.uint8))
         
-        if upscale_method == 'bicubic':
-            lr_pil = img_pil.resize((w_lr // scale_factor, h_lr // scale_factor), Image.BICUBIC)
-            lr_upscaled = lr_pil.resize((w_lr, h_lr), Image.BICUBIC)
-        else:  # bilinear
-            lr_pil = img_pil.resize((w_lr // scale_factor, h_lr // scale_factor), Image.BILINEAR)
-            lr_upscaled = lr_pil.resize((w_lr, h_lr), Image.BILINEAR)
-        
+        lr_pil = img_pil.resize((w_lr // scale_factor, h_lr // scale_factor), Image.BICUBIC)
+        lr_upscaled = lr_pil.resize((w_lr, h_lr), Image.BICUBIC)
+
         # Convert to tensor and normalize
         lr_tensor = torch.from_numpy(
             np.array(lr_upscaled, dtype=np.float32) / 255.0
         ).permute(2, 0, 1).unsqueeze(0)  # (1, 3, H, W)
-        
+
         # Run SRCNN
         lr_tensor = lr_tensor.to(self.device)
         sr_tensor = self.model(lr_tensor)
-        
+
         # Clip to [0, 1] and convert to numpy
         sr_array = sr_tensor[0].permute(1, 2, 0).cpu().numpy()
         sr_array = np.clip(sr_array, 0, 1)
-        
+
         return sr_array
     
     @torch.no_grad()
@@ -150,7 +136,7 @@ class SRCNNInference:
         for i, img_path in enumerate(image_files, 1):
             try:
                 # Super-resolve
-                sr_array = self.super_resolve(img_path, scale_factor=scale_factor)
+                sr_array = self.infer(img_path, scale_factor=scale_factor)
                 
                 # Save
                 sr_uint8 = (sr_array * 255).astype(np.uint8)
@@ -242,7 +228,7 @@ def example_single_image_sr():
     sr = SRCNNInference(checkpoint_path, device='cuda' if torch.cuda.is_available() else 'cpu')
     
     # Super-resolve
-    sr_image = sr.super_resolve(input_image, scale_factor=2)
+    sr_image = sr.infer(input_image, scale_factor=2)
     
     # Save
     sr_uint8 = (sr_image * 255).astype(np.uint8)
