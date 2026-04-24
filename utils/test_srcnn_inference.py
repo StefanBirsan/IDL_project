@@ -18,6 +18,7 @@ from typing import Any, Literal
 
 import numpy as np
 import torch
+import torch.backends.cudnn as cudnn
 from PIL import Image
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 from torch import Tensor
@@ -152,13 +153,13 @@ def _get_search_dir(data_dir: Path, split: str) -> Path:
     return split_dir if split_dir.exists() else data_dir
 
 
-def _sample_random_image_path(data_dir: Path, scale_factor):
+def _get_random_tensor_pairs(data_dir: Path):
     if not data_dir.exists():
         raise FileNotFoundError(f"Dataset directory not found: {data_dir}")
 
     dataset = FaceSuperResolutionDataset(data_dir=str(data_dir))
 
-    sample = dataset.get_random_sample(scale_factor)
+    sample = dataset.get_random_sample()
 
     lr_tensor = sample["lr_image"]
     hr_tensor = sample["hr_image"]
@@ -232,23 +233,6 @@ def _extract_hf_image(sample: dict[str, Any]) -> tuple[str, np.ndarray]:
     name = "stream_random_sample"
     return name, image
 
-
-def _run_srcnn(
-    engine: SRCNNInference,
-    lr_tensor: Tensor,
-    device: Literal["cpu", "cuda"],
-) -> np.ndarray:
-
-    # move to device
-    lr_tensor = lr_tensor.to(device)
-
-    with torch.no_grad():
-        sr_tensor = engine.model(lr_tensor)
-
-    sr_image = sr_tensor.squeeze(0).permute(1, 2, 0).cpu().numpy()
-
-    return np.clip(sr_image, 0.0, 1.0)
-
 def _compute_metrics(reference_hr: np.ndarray, prediction: np.ndarray) -> tuple[float, float]:
     """Compute PSNR and SSIM on RGB images in [0, 1]."""
     # data_range is the difference between the max and min possible pixel values
@@ -271,6 +255,9 @@ def main() -> None:
     parser = define_args()
     args = parser.parse_args()
 
+    # Turn on cuDNN optimization and check for best algorithms
+    cudnn.benchmark = True
+
     device = args.device
     if device == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but not available on this machine")
@@ -290,32 +277,24 @@ def main() -> None:
     if selected_image is None:
         # select a random tensor pair from the dataset
         if args.data_dir is not None:
-            lr_tensor, hr_tensor = _sample_random_image_path(args.data_dir, args.scale_factor)
+            lr_tensor, hr_tensor = _get_random_tensor_pairs(args.data_dir, args.scale_factor)
     else:
-        print("idk what to do here")
+        # If an input image is provided, load it and build the LR/HR pair
+        #  then convert to tensors
+        pass
 
+    # Convert obtained tensors to numpy arrays for inference and visualization
     hr_image = hr_tensor.permute(1, 2, 0).cpu().numpy()
     lr_image = lr_tensor.permute(1, 2, 0).cpu().numpy()
 
-    # # === DEBUG ===
-    #
-    # import matplotlib.pyplot as plt
-    #
-    # fig, ax = plt.subplots(1, 2, figsize=(10, 5))
-    # ax[0].imshow(lr_function_image)
-    # ax[1].imshow(lr_image)
-    # plt.show()
-    #
-    # return
-    # # === END DEBUG ===
-
     inference_engine = SRCNNInference(str(args.checkpoint), device=device)
-    sr_image = _run_srcnn(inference_engine, lr_tensor, device=device)
+    output_numpy = inference_engine.infer(lr_image)
 
-    hr_aligned = hr_image[: sr_image.shape[0], : sr_image.shape[1], :]
+    # Crop HR image to match output size
+    hr_aligned = hr_image[: output_numpy.shape[0], : output_numpy.shape[1], :]
 
     psnr_bicubic, ssim_bicubic = _compute_metrics(hr_aligned, lr_image)
-    psnr_srcnn, ssim_srcnn = _compute_metrics(hr_aligned, sr_image)
+    psnr_srcnn, ssim_srcnn = _compute_metrics(hr_aligned, output_numpy)
 
     print("Comparing basic bicubic upscaling to SRCNN:")
     print("PSNR: The higher the better")
@@ -328,7 +307,7 @@ def main() -> None:
     print(f"SSIM: {ssim_srcnn:.4f}")
 
     import matplotlib.pyplot as plt
-    residual = np.abs(sr_image - hr_aligned).mean(axis=2)
+    residual = np.abs(output_numpy - hr_aligned).mean(axis=2)
 
     fig, ax = plt.subplots(figsize=(6, 5))
     im = ax.imshow(residual, cmap='hot')
@@ -341,7 +320,7 @@ def main() -> None:
 
     visualize_result(
         input_image=lr_image,
-        output_image=sr_image,
+        output_image=output_numpy,
         ground_truth_image=hr_aligned,
         save_path=args.save_figure,
         show_plot=args.show_plot,
