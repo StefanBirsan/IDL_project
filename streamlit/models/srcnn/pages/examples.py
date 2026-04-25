@@ -1,235 +1,87 @@
-"""
-Examples and inference page for SRCNN
-"""
+from tkinter import Image
+
 import streamlit as st
 import numpy as np
 from pathlib import Path
 
 
 def render_examples_page(config):
-    """Render examples page for SRCNN"""
+    st.markdown('<div class="section-header">Our Results</div>', unsafe_allow_html=True)
     
-    st.info("""
-    💡 **Note:** Connect training checkpoints and dataset to run live inference.
-    This section shows the inference framework and usage patterns.
-    """)
+    st.markdown("""
+                For the dataset, we used the [FFHQ](https://www.kaggle.com/datasets/arnaud58/flickrfaceshq-dataset-ffhq) dataset consisting of 52K+ high-quality human face images at 1024x1024 resolution.
+
+                As described in the documentation page, the LR images were created by downscaling the HR images by the scaling factor, and upscaling back, both using bicubic interpolation.
+                """)
     
-    st.markdown('<div class="section-header">Example Showcase</div>', unsafe_allow_html=True)
+    st.markdown("""
+                ## First attempt: 2x super-resolution for 5 epochs
+""")
     
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("### Input (LR)")
-        st.markdown(f"""
-        **Low-Resolution Input:**
-        - Shape: 64×64 (example)
-        - Upsampled to: 128×128 (for {config.scale_factor}×)
-        - Bicubic interpolation
-        
-        **Quality:**
-        - Blurry edges
-        - Loss of detail
-        - Typical LR artifacts
-        """)
-    
-    with col2:
-        st.markdown("### Network")
-        st.markdown(f"""
-        **SRCNN Processing:**
-        - Input: Upsampled LR
-        - 3 Conv layers
-        - Feature extraction
-        - Non-linear mapping
-        - Reconstruction
-        """)
-    
-    with col3:
-        st.markdown("### Output (SR)")
-        st.markdown(f"""
-        **Super-Resolved Output:**
-        - Shape: {128 * config.scale_factor // 2}×{128 * config.scale_factor // 2}
-        - Enhanced details
-        - Sharpened edges
-        - Improved quality
-        """)
-    
-    st.markdown('<div class="section-header">Inference Pipeline</div>', unsafe_allow_html=True)
-    
-    with st.expander("🚀 How to Run Inference", expanded=True):
-        st.code(f"""
-import torch
-import torch.nn.functional as F
-from training.train_utils.srcnn import SRCNN
-from training.inference.srcnn_inference import infer_image
+    st.image(Path(__file__).parent.parent.parent.parent / 'assets' / 'srcnn_v1_output.png', caption="SRCNN 2x super-resolution results after 5 epochs of training")
 
-# ============ Setup ============
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-# ============ Load Model ============
-model = SRCNN(
-    scale_factor={config.scale_factor},
-    intermediate_channels={config.intermediate_channels},
-    in_channels=1,
-    out_channels=1,
-    upsampling_mode='bicubic'
-)
-
-# Load checkpoint
-checkpoint = torch.load('checkpoints/srcnn/srcnn_best.pt', map_location=device)
-model.load_state_dict(checkpoint['model_state_dict'])
-model.to(device)
-model.eval()
-
-# ============ Run Inference ============
-# Load LR image
-lr_image = np.load('path/to/lr_image.npy')  # Shape: (1, 1, H, W) or (H, W)
-
-# Ensure correct shape
-if lr_image.ndim == 2:
-    lr_image = lr_image[np.newaxis, np.newaxis, ...]
-elif lr_image.ndim == 3:
-    lr_image = lr_image[np.newaxis, ...]
-
-# Convert to tensor
-lr_tensor = torch.from_numpy(lr_image).float().to(device)
-
-# Inference
-with torch.no_grad():
-    sr_output = model(lr_tensor)
-
-# Convert back to numpy
-sr_image = sr_output.squeeze().cpu().numpy()
-
-print(f"Input shape:  {{lr_tensor.shape}}")
-print(f"Output shape: {{sr_output.shape}}")
-
-# ============ Visualization ============
-import matplotlib.pyplot as plt
-
-fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-
-# Bicubic upsampled (for comparison)
-bicubic = F.interpolate(
-    lr_tensor, 
-    scale_factor={config.scale_factor}, 
-    mode='bicubic', 
-    align_corners=False
-).squeeze().cpu().numpy()
-
-axes[0].imshow(lr_image.squeeze(), cmap='gray')
-axes[0].set_title('Low-Resolution (LR)')
-axes[0].axis('off')
-
-axes[1].imshow(bicubic, cmap='gray')
-axes[1].set_title('Bicubic Upsampling')
-axes[1].axis('off')
-
-axes[2].imshow(sr_image, cmap='gray')
-axes[2].set_title('SRCNN Output (SR)')
-axes[2].axis('off')
-
-plt.tight_layout()
-plt.savefig('srcnn_comparison.png', dpi=150, bbox_inches='tight')
-plt.show()
-        """, language="python")
-    
-    st.markdown('<div class="section-header">Batch Inference</div>', unsafe_allow_html=True)
-    
     st.code("""
-import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-from training.train_utils.srcnn import SRCNN
-
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-# Load model
-model = SRCNN(scale_factor=2, intermediate_channels=32)
-checkpoint = torch.load('checkpoints/srcnn/srcnn_best.pt', map_location=device)
-model.load_state_dict(checkpoint['model_state_dict'])
-model.to(device)
-model.eval()
-
-# Process batch
-batch_lr = next(iter(data_loader))  # Shape: (B, 1, H, W)
-batch_lr = batch_lr.to(device)
-
-with torch.no_grad():
-    batch_sr = model(batch_lr)
-
-# Compute metrics
-from skimage.metrics import peak_signal_noise_ratio, structural_similarity
-
-psnr_scores = []
-ssim_scores = []
-
-for i in range(len(batch_sr)):
-    sr = batch_sr[i].squeeze().cpu().numpy()
-    hr = batch_hr[i].squeeze().cpu().numpy()
+BICUBIC (basic resizing in image editing software)
+PSNR: 36.79 dB
+SSIM: 0.9540
+SRCNN
+PSNR: 36.79 dB
+SSIM: 0.9540
+            """)
     
-    psnr = peak_signal_noise_ratio(hr, sr, data_range=1.0)
-    ssim = structural_similarity(hr, sr, data_range=1.0)
+    st.markdown("""
+The results are not great, as the model visibly fails to reconstruct fine details and its reconstruction is equivalent to bicubic interpolation. The PSNR and SSIM metrics also confirm that the model is not improving over the bicubic baseline.
+Also, note that because of 2x downscaling of the LR, the input looks similar to the output, but we assure that the input is in fact downscaled.
+                """)
     
-    psnr_scores.append(psnr)
-    ssim_scores.append(ssim)
+    st.markdown("""
+                ## Second attempt: 4x super-resolution for 20 epochs
+""")
+    
+    st.image(Path(__file__).parent.parent.parent.parent / 'assets' / 'srcnn_v2_output.png', caption="SRCNN 4x super-resolution results after 20 epochs of training")
 
-print(f"Average PSNR: {np.mean(psnr_scores):.2f} dB")
-print(f"Average SSIM: {np.mean(ssim_scores):.4f}")
-    """, language="python")
+    st.code("""
+PSNR: 28.13 dB
+SSIM: 0.8334
+SRCNN
+PSNR: 28.13 dB
+SSIM: 0.8334
+            """)
     
-    st.markdown('<div class="section-header">Visualization Techniques</div>', unsafe_allow_html=True)
+    st.markdown("""
+Disappointing results once again... The model is still not improving over the bicubic baseline. We decided to take it up a notch and train more, with a larger scale factor.
+                """)
     
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        ### Side-by-Side Comparison
-        - Input (LR)
-        - Output (SR)
-        - Reference (HR)
-        
-        **Shows:**
-        - Overall reconstruction quality
-        - Artifact presence
-        - Detail preservation
-        """)
-    
-    with col2:
-        st.markdown("""
-        ### Difference Maps
-        - Compute: |SR - HR|
-        - Visualize error distribution
-        - Identify problem regions
-        
-        **Color Coding:**
-        - Dark = low error
-        - Bright = high error
-        """)
-    
-    with col3:
-        st.markdown("""
-        ### Metrics Visualization
-        - PSNR vs Scale Factor
-        - SSIM over batches
-        - Loss curves
-        
-        **Use for:**
-        - Performance tracking
-        - Hyperparameter tuning
-        - Comparison with baselines
-        """)
+    st.markdown("""
+                ## Third attempt: 8x super-resolution for 100 epochs
+                """)
+    st.image(Path(__file__).parent.parent.parent.parent / 'assets' / 'srcnn_v3_output.png', caption="SRCNN 8x super-resolution results after 100 epochs of training")
 
+    st.code("""
+BICUBIC (basic resizing in image editing software)
+PSNR: 29.55 dB
+SSIM: 0.8010
+SRCNN
+PSNR: 29.55 dB
+SSIM: 0.8010
+            """)
+    
+    st.markdown("""
+Even after training for 100 epochs, we still have the same results...
+                
+We decided that perhaps the architecture is too simple (the SRCNN paper itself is quite outdated), and that we need to look into more modern architectures.
+                """)
 
 def upload_and_infer():
-    """Section for uploading images and running inference"""
-    st.subheader("Interactive Inference")
+    st.markdown('<div class="section-header">Try it yourself</div>', unsafe_allow_html=True)
     
-    uploaded_file = st.file_uploader("Upload a .npy image", type=['npy'])
+    uploaded_file = st.file_uploader("Upload an image of a face to upscale", type=['png, jpg, jpeg'])
     
     if uploaded_file is not None:
         try:
-            # Load the uploaded numpy file
-            image = np.load(uploaded_file)
+            # Load the uploaded image file
+            image = Image.open(uploaded_file)
+            image = np.array(image)
             st.info(f"Loaded image with shape: {image.shape}")
             
             # Show upload options
