@@ -17,6 +17,8 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "torchvision>=0.26.0",
     "streamlit>=1.56.0",
+    "ipykernel>=7.2.0",
+    "wandb>=0.26.1",
 ]
 
 [tool.uv]
