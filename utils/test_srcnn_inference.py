@@ -288,7 +288,32 @@ def main() -> None:
     lr_image = lr_tensor.permute(1, 2, 0).cpu().numpy()
 
     inference_engine = SRCNNInference(str(args.checkpoint), device=device)
-    output_numpy = inference_engine.infer(lr_image)
+
+    # DEBUG
+    """
+    print("Checkpoint weight diagnostics:")
+    for name, param in inference_engine.model.named_parameters():
+        print(
+            f"{name}: "
+            f"mean={param.data.mean().item():.8f}, "
+            f"std={param.data.std().item():.8f}, "
+            f"abs_mean={param.data.abs().mean().item():.8f}, "
+            f"max_abs={param.data.abs().max().item():.8f}"
+        )
+    """
+
+    output_numpy = inference_engine.infer(hr_image, scale_factor=args.scale_factor)
+
+    # DEBUG
+    """
+    print("Model output diagnostics:")
+    print(f"  mean(|SRCNN - bicubic|): {np.mean(np.abs(output_numpy - lr_image)):.10f}")
+    print(f"  max(|SRCNN - bicubic|):  {np.max(np.abs(output_numpy - lr_image)):.10f}")
+    print(
+        f"  mean(|HR - bicubic|):    {np.mean(np.abs(hr_image[:output_numpy.shape[0], :output_numpy.shape[1], :] - lr_image)):.10f}")
+    print(
+        f"  mean(|HR - SRCNN|):      {np.mean(np.abs(hr_image[:output_numpy.shape[0], :output_numpy.shape[1], :] - output_numpy)):.10f}")
+    """
 
     # Crop HR image to match output size
     hr_aligned = hr_image[: output_numpy.shape[0], : output_numpy.shape[1], :]
