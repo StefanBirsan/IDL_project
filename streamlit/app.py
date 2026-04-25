@@ -1,7 +1,3 @@
-"""
-Main Streamlit App - Multi-Model Documentation Hub
-Refactored for easier model management and navigation
-"""
 import streamlit as st
 import sys
 from pathlib import Path
@@ -22,7 +18,7 @@ from models import get_available_models
 
 # Configure page
 st.set_page_config(
-    page_title="Model Documentation Hub",
+    page_title="Model Documentation",
     page_icon="🚀",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -62,7 +58,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Sidebar
-st.sidebar.markdown("## 📚 Model Documentation Hub")
+st.sidebar.markdown("## Model Documentation Hub")
 st.sidebar.markdown("---")
 
 # Get available models
@@ -131,11 +127,3 @@ else:
         render_func(model_config)
     else:
         st.error(f"Page not found: {page_key}")
-
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: #666;'>
-    <p>Physics-Informed Model Documentation Hub | v0.2.0</p>
-</div>
-""", unsafe_allow_html=True)
