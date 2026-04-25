@@ -10,7 +10,7 @@ class AppConfig:
     """Configuration for the streamlit app"""
     
     # Page configuration
-    page_title: str = "Model Documentation Hub"
+    page_title: str = "Model Documentation"
     page_icon: str = "🚀"
     layout: str = "wide"
     

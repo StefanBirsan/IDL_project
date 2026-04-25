@@ -1,5 +1,6 @@
 """Inference utilities - post-training model inference"""
-from .inference import Inference
-from .onnx_inference import ONNXInference
+from .fisr.inference import Inference
+from .fisr.onnx_inference import ONNXInference
+from .srcnn.srcnn_inference import SRCNNInference
 
-__all__ = ['Inference', 'ONNXInference']
+__all__ = ['Inference', 'ONNXInference', 'SRCNNInference']

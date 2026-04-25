@@ -13,6 +13,10 @@ dependencies = [
     "tqdm>=4.65.0",
     "astropy>=6.0.0",
     "torch>=2.11.0",
+    "datasets>=2.19.1",
+    "opencv-python>=4.13.0.92",
+    "torchvision>=0.26.0",
+    "streamlit>=1.56.0",
 ]
 
 [tool.uv]

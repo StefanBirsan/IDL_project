@@ -25,7 +25,7 @@ class CheckpointManager:
              epoch: int,
              model: nn.Module,
              optimizer: optim.Optimizer,
-             scheduler: Any,
+             scheduler: Optional[Any],
              config: Dict,
              global_step: int,
              is_best: bool = False) -> Path:
@@ -47,13 +47,14 @@ class CheckpointManager:
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
             'config': config,
             'global_step': global_step,
         }
         
         # Regular checkpoint
-        ckpt_path = self.save_dir / f'checkpoint_epoch_{epoch:04d}.pt'
+        epoch_num = epoch + 1
+        ckpt_path = self.save_dir / f'checkpoint_epoch_{epoch_num:04d}.pt'
         torch.save(checkpoint, ckpt_path)
         
         # Best checkpoint
