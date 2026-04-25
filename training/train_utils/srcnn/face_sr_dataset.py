@@ -90,6 +90,8 @@ class FaceSuperResolutionDataset(Dataset):
         self.normalize = normalize
         self.train_fraction = train_fraction
 
+        self.image_paths = self._find_images()
+
         self.train_paths = None
         self.val_paths = None
 
@@ -195,20 +197,20 @@ class FaceSuperResolutionDataset(Dataset):
         _, h, w = hr_tensor.shape
 
         # Make sure image size is divisible by scale factor
-        h_lr = (h // self.scale_factor) * self.scale_factor
-        w_lr = (w // self.scale_factor) * self.scale_factor
+        hr_adjusted_height = (h // self.scale_factor) * self.scale_factor
+        hr_adjusted_width = (w // self.scale_factor) * self.scale_factor
 
         # Crop to divisible size if needed
-        if h > h_lr or w > w_lr:
-            hr_tensor = hr_tensor[:, :h_lr, :w_lr]
+        if h > hr_adjusted_height or w > hr_adjusted_width:
+            hr_tensor = hr_tensor[:, :hr_adjusted_height, :hr_adjusted_width]
 
         # Downscale to get LR
         hr_pil = TF.to_pil_image(hr_tensor)
-        lr_h, lr_w = h_lr // self.scale_factor, w_lr // self.scale_factor
-        lr_pil = hr_pil.resize((lr_w, lr_h), Image.BICUBIC)
+        lr_height, lr_width = hr_adjusted_height // self.scale_factor, hr_adjusted_width // self.scale_factor
+        lr_pil = hr_pil.resize((lr_width, lr_height), Image.BICUBIC)
 
         # Upscale back to original size using bicubic
-        lr_upscaled_pil = lr_pil.resize((w_lr, h_lr), Image.BICUBIC)
+        lr_upscaled_pil = lr_pil.resize((hr_adjusted_width, hr_adjusted_height), Image.BICUBIC)
 
         # Convert back to tensor
         lr_tensor = transforms.ToTensor()(lr_upscaled_pil)  # (3, H, W), normalized to [0, 1]
