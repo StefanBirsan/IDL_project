@@ -153,11 +153,11 @@ def _get_search_dir(data_dir: Path, split: str) -> Path:
     return split_dir if split_dir.exists() else data_dir
 
 
-def _get_random_tensor_pairs(data_dir: Path):
+def _get_random_tensor_pairs(data_dir: Path, scale_factor: int):
     if not data_dir.exists():
         raise FileNotFoundError(f"Dataset directory not found: {data_dir}")
 
-    dataset = FaceSuperResolutionDataset(data_dir=str(data_dir))
+    dataset = FaceSuperResolutionDataset(data_dir=str(data_dir), scale_factor=scale_factor)
 
     sample = dataset.get_random_sample()
 
@@ -277,7 +277,7 @@ def main() -> None:
     if selected_image is None:
         # select a random tensor pair from the dataset
         if args.data_dir is not None:
-            lr_tensor, hr_tensor = _get_random_tensor_pairs(args.data_dir, args.scale_factor)
+            lr_tensor, hr_tensor = _get_random_tensor_pairs(args.data_dir, scale_factor=args.scale_factor)
     else:
         # If an input image is provided, load it and build the LR/HR pair
         #  then convert to tensors

@@ -67,8 +67,8 @@ class FaceSuperResolutionDataset(Dataset):
 
     def __init__(self,
                  data_dir: str,
+                 scale_factor: int,
                  split: str = Literal['train', 'val'],
-                 scale_factor: int = 2,
                  crop_size: int = 33,
                  normalize: bool = True,
                  train_fraction: float = 0.8):

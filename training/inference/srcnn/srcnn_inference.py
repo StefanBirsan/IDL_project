@@ -54,12 +54,12 @@ class SRCNNInference:
     @torch.no_grad()
     def infer(self,
               image: Union[np.ndarray, str, Path],
-              scale_factor: int = 2) -> np.ndarray:
+              scale_factor) -> np.ndarray:
         """
         Apply super-resolution to an image.
         
         Args:
-            image: LR input image (as numpy array or file path)
+            image: HR input image (as numpy array or file path)
             scale_factor: Super-resolution upscaling factor
         Returns:
             Model super-resolution output (numpy array, normalized to [0, 1])
