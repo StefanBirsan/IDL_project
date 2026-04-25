@@ -1,7 +1,6 @@
-"""Training core module - configuration and trainer"""
-from .config import TrainingConfig
-from .config_sr import SRTrainingConfig
-from .trainer import Trainer
-from .trainer_sr import SRTrainer
+"""Training core module - configuration and trainer for SRCNN"""
+from .config_srcnn import SRCNNTrainingConfig
+from .trainer_srcnn import SRCNNTrainer
+from .config_esrcnn import ESRCNNConfig
 
-__all__ = ['TrainingConfig', 'SRTrainingConfig', 'Trainer', 'SRTrainer']
+__all__ = ['SRCNNTrainingConfig', 'SRCNNTrainer', 'ESRCNNConfig']

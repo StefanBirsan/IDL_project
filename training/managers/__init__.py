@@ -1,5 +1,4 @@
-"""Manager utilities - checkpoint and export management"""
+"""Manager utilities - checkpoint management"""
 from .checkpoint_manager import CheckpointManager
-from .model_exporter import ModelExporter
 
-__all__ = ['CheckpointManager', 'ModelExporter']
+__all__ = ['CheckpointManager']

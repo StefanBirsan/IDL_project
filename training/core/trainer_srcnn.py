@@ -15,7 +15,7 @@ from skimage.metrics import structural_similarity, peak_signal_noise_ratio
 
 from training.train_utils.srcnn import SRCNN
 from training.core.config_srcnn import SRCNNTrainingConfig
-from training.managers import CheckpointManager, ModelExporter
+from training.managers import CheckpointManager
 
 
 class SRCNNTrainer:
@@ -53,7 +53,6 @@ class SRCNNTrainer:
         
         # Managers
         self.checkpoint_manager = CheckpointManager(config.save_dir)
-        self.model_exporter = ModelExporter()
         
         # Tracking
         self.current_epoch = 0
