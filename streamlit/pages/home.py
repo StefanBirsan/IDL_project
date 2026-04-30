@@ -13,7 +13,7 @@ def render_home_page():
     """)
     
     st.markdown("### Usage")
-    
+
     st.markdown("""
     For each model, you can view, wherever applicable:
     - Architecture
