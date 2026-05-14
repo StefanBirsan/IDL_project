@@ -17,6 +17,7 @@ render_architecture_page = pages.render_architecture_page
 render_documentation_page = pages.render_documentation_page
 render_examples_page = pages.render_examples_page
 render_metrics_page = pages.render_metrics_page
+render_live_inference_page = pages.render_live_inference_page
 
 
 def get_pages():
@@ -42,6 +43,10 @@ def get_pages():
         '🖼️ Examples': {
             'render': render_examples_page,
             'description': 'Face super-resolution examples',
+        },
+        '🎬 Live Demo': {
+            'render': render_live_inference_page,
+            'description': 'Real-time image super-resolution inference',
         },
     }
 

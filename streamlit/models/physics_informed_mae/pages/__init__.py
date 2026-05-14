@@ -37,5 +37,12 @@ met_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(met_module)
 render_metrics_page = met_module.render_metrics_page
 
+# Load live inference module
+li_path = pages_dir / 'live_inference.py'
+spec = importlib.util.spec_from_file_location('pim_live_inference', li_path)
+li_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(li_module)
+render_live_inference_page = li_module.render_live_inference_page
 
-__all__ = ['render_architecture_page', 'render_documentation_page', 'render_examples_page', 'render_metrics_page', 'upload_and_infer']
+
+__all__ = ['render_architecture_page', 'render_documentation_page', 'render_examples_page', 'render_metrics_page', 'render_live_inference_page', 'upload_and_infer']
