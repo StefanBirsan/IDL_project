@@ -166,7 +166,7 @@ def render_live_inference_page(config):
     st.markdown('<div class="section-header">🎬 Live Inference Demo</div>', unsafe_allow_html=True)
     
     st.info("""
-    📸 **Upload an image and watch ESRCNN enhance it in real-time!**
+    📸 **Upload a model and image, then watch ESRCNN enhance it in real-time!**
     
     - **Scale Factor:** {}×
     - **Architecture:** {} residual blocks with {} features
@@ -177,52 +177,77 @@ def render_live_inference_page(config):
         config.num_features
     ))
     
-    # Load model
-    model, device = load_esrcnn_model(config)
-    
-    if model is None or device is None:
-        st.error("Failed to load model. Please check your configuration.")
-        return
-    
     # Create tabs for different inference modes
-    tab1, tab2, tab3 = st.tabs(["📤 Upload Image", "📊 Batch Processing", "ℹ️ About"])
+    tab1, tab2, tab3 = st.tabs(["📤 Upload Model & Image", "📊 Batch Processing", "ℹ️ About"])
     
     with tab1:
-        st.markdown("### Single Image Inference")
+        st.markdown("### Model & Image Upload")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Upload or select an image:**")
-            
-            # File uploader
-            uploaded_file = st.file_uploader(
-                "Choose an image file",
-                type=['jpg', 'jpeg', 'png', 'bmp', 'webp'],
-                label_visibility="collapsed"
+            st.markdown("**Step 1: Upload ONNX Model**")
+            model_file = st.file_uploader(
+                "Choose an ONNX model file",
+                type=['onnx'],
+                label_visibility="collapsed",
+                key="model_upload"
             )
             
-            # Example images (if available)
-            use_example = st.checkbox("Or use an example image", value=False)
+            use_default_model = st.checkbox(
+                "Or use default ESRCNN model",
+                value=not model_file,
+                key="use_default_model"
+            )
             
         with col2:
-            st.markdown("**Processing Settings:**")
-            
-            device_choice = st.radio(
-                "Device:",
-                ["Auto (GPU if available)", "CPU Only"],
-                label_visibility="collapsed"
+            st.markdown("**Step 2: Upload Image for Upscaling**")
+            image_file = st.file_uploader(
+                "Choose an image file",
+                type=['jpg', 'jpeg', 'png', 'bmp', 'webp'],
+                label_visibility="collapsed",
+                key="image_upload"
             )
             
-            show_metrics = st.checkbox("Show quality metrics", value=True)
+            use_example = st.checkbox("Or use an example image", value=False)
+        
+        # Load model
+        model = None
+        device = None
+        model_source = None
+        
+        if use_default_model or model_file is None:
+            # Load default model
+            st.info("📦 Loading default ESRCNN model...")
+            model, device = load_esrcnn_model(config)
+            model_source = "Default ESRCNN model"
+        elif model_file is not None:
+            # Validate and load uploaded model
+            st.info("🔍 Validating uploaded model...")
+            from streamlit.components.viz import validate_onnx_model, load_onnx_model_from_upload
+            
+            if validate_onnx_model(model_file):
+                st.info("📦 Loading uploaded ONNX model...")
+                model, device = load_onnx_model_from_upload(model_file)
+                model_source = f"Custom model: {model_file.name}"
+            else:
+                st.error("❌ Invalid ONNX model file. Please upload a valid ONNX model.")
+                model = None
+                device = None
+        
+        if model is None or device is None:
+            st.error("Failed to load model. Please check your configuration.")
+            return
+        
+        st.success(f"✅ Model loaded: {model_source}")
         
         # Process image
-        if uploaded_file is not None or use_example:
+        if image_file is not None or use_example:
             try:
                 # Load image
-                if uploaded_file is not None:
-                    input_image = Image.open(uploaded_file)
-                    image_name = uploaded_file.name
+                if image_file is not None:
+                    input_image = Image.open(image_file)
+                    image_name = image_file.name
                 else:
                     # Create a sample image if example is selected
                     input_image = Image.new('RGB', (128, 128), color='red')
@@ -284,6 +309,7 @@ def render_live_inference_page(config):
                     st.caption(f"Size: {hr_width}×{hr_height}")
                 
                 # Show metrics
+                show_metrics = st.checkbox("Show quality metrics", value=True, key="show_metrics")
                 if show_metrics:
                     st.markdown("---")
                     st.markdown("### Quality Metrics")

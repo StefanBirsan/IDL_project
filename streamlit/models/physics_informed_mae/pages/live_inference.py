@@ -173,7 +173,7 @@ def render_live_inference_page(config):
     st.markdown('<div class="section-header">🎬 Live Inference Demo</div>', unsafe_allow_html=True)
     
     st.info("""
-    📸 **Upload an image and watch Physics-Informed MAE reconstruct it!**
+    📸 **Upload a model and image, then watch Physics-Informed MAE reconstruct it!**
     
     - **Image Size:** {}×{}
     - **Architecture:** Masked Autoencoder with Physics-Informed Preprocessing
@@ -185,52 +185,88 @@ def render_live_inference_page(config):
         int(config.mask_ratio * 100)
     ))
     
-    # Load model
-    model, device = load_pim_model(config)
-    
-    if model is None or device is None:
-        st.error("Failed to load model. Please check your configuration.")
-        return
-    
     # Create tabs for different inference modes
-    tab1, tab2, tab3 = st.tabs(["📤 Upload Image", "📊 Batch Processing", "ℹ️ About"])
+    tab1, tab2, tab3 = st.tabs(["📤 Upload Model & Image", "📊 Batch Processing", "ℹ️ About"])
     
     with tab1:
-        st.markdown("### Single Image Inference")
+        st.markdown("### Model & Image Upload")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Upload or select an image:**")
+            st.markdown("**Step 1: Upload Model**")
+            model_file = st.file_uploader(
+                "Choose a model file (.onnx or .pth)",
+                type=['onnx', 'pth', 'pt'],
+                label_visibility="collapsed",
+                key="model_upload_pim"
+            )
             
-            # File uploader
-            uploaded_file = st.file_uploader(
+            use_default_model = st.checkbox(
+                "Or use default Physics-Informed MAE model",
+                value=not model_file,
+                key="use_default_model_pim"
+            )
+            
+        with col2:
+            st.markdown("**Step 2: Upload Image for Reconstruction**")
+            image_file = st.file_uploader(
                 "Choose an image file",
                 type=['jpg', 'jpeg', 'png', 'bmp', 'webp'],
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                key="image_upload_pim"
             )
             
             use_example = st.checkbox("Or use an example image", value=False)
+        
+        # Load model
+        model = None
+        device = None
+        model_source = None
+        model_type = None
+        
+        if use_default_model or model_file is None:
+            # Load default PyTorch model
+            st.info("📦 Loading default Physics-Informed MAE model...")
+            model, device = load_pim_model(config)
+            model_source = "Default Physics-Informed MAE model"
+            model_type = "pytorch"
+        elif model_file is not None:
+            # Detect model type by extension
+            file_ext = model_file.name.lower().split('.')[-1]
             
-        with col2:
-            st.markdown("**Processing Settings:**")
-            
-            device_choice = st.radio(
-                "Device:",
-                ["Auto (GPU if available)", "CPU Only"],
-                label_visibility="collapsed"
-            )
-            
-            show_mask = st.checkbox("Show mask visualization", value=True)
-            show_metrics = st.checkbox("Show quality metrics", value=True)
+            if file_ext == 'onnx':
+                # Load ONNX model
+                from streamlit.components.viz import validate_onnx_model, load_onnx_model_from_upload
+                
+                st.info("🔍 Validating uploaded ONNX model...")
+                if validate_onnx_model(model_file):
+                    st.info("📦 Loading uploaded ONNX model...")
+                    model, device = load_onnx_model_from_upload(model_file)
+                    model_source = f"Custom ONNX model: {model_file.name}"
+                    model_type = "onnx"
+                else:
+                    st.error("❌ Invalid ONNX model file. Please upload a valid ONNX model.")
+                    model = None
+                    device = None
+            else:
+                st.error(f"❌ Unsupported model format: {file_ext}. Please upload .onnx, .pth, or .pt files.")
+                model = None
+                device = None
+        
+        if model is None or device is None:
+            st.error("Failed to load model. Please check your configuration.")
+            return
+        
+        st.success(f"✅ Model loaded: {model_source}")
         
         # Process image
-        if uploaded_file is not None or use_example:
+        if image_file is not None or use_example:
             try:
                 # Load image
-                if uploaded_file is not None:
-                    input_image = Image.open(uploaded_file)
-                    image_name = uploaded_file.name
+                if image_file is not None:
+                    input_image = Image.open(image_file)
+                    image_name = image_file.name
                 else:
                     # Create a sample image if example is selected
                     input_image = Image.new('L', (128, 128), color=128)
@@ -254,7 +290,17 @@ def render_live_inference_page(config):
                 st.info("🚀 Running inference...")
                 progress_bar = st.progress(0)
                 
-                reconstructed, mask, inference_time = run_inference(model, img_tensor, device)
+                if model_type == "pytorch":
+                    reconstructed, mask, inference_time = run_inference(model, img_tensor, device)
+                else:
+                    # ONNX inference
+                    start_time = time.time()
+                    input_name = model.get_inputs()[0].name
+                    input_data = img_tensor.numpy().astype(np.float32)
+                    outputs = model.run(None, {input_name: input_data})
+                    reconstructed = torch.from_numpy(outputs[0]).float()
+                    mask = torch.from_numpy(outputs[1]).float() if len(outputs) > 1 else None
+                    inference_time = time.time() - start_time
                 
                 progress_bar.progress(100)
                 
@@ -288,6 +334,7 @@ def render_live_inference_page(config):
                     st.caption(f"From {int(config.mask_ratio*100)}% masked patches")
                 
                 # Show mask visualization
+                show_mask = st.checkbox("Show mask visualization", value=True, key="show_mask_pim")
                 if show_mask and mask is not None:
                     st.markdown("---")
                     st.markdown("### Mask Pattern Visualization")

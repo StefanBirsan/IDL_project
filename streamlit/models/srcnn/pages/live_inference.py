@@ -39,6 +39,39 @@ def load_srcnn_model(config):
         return None, None
 
 
+def load_onnx_model_from_upload_srcnn(uploaded_file):
+    """Load ONNX model from uploaded file for SRCNN"""
+    try:
+        import onnxruntime as ort
+        import tempfile
+        import os
+        
+        # Create temporary directory to save the uploaded file
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp_file:
+            tmp_file.write(uploaded_file.getbuffer())
+            tmp_path = tmp_file.name
+        
+        try:
+            # Check for GPU providers
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            session = ort.InferenceSession(tmp_path, providers=providers)
+            device = "GPU" if 'CUDAExecutionProvider' in session.get_providers() else "CPU"
+            
+            st.success(f"✅ ONNX Model loaded on {device}")
+            return session, device
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
+    except ImportError:
+        st.error("❌ onnxruntime not installed. Please install it: pip install onnxruntime")
+        return None, None
+    except Exception as e:
+        st.error(f"❌ Error loading ONNX model: {e}")
+        return None, None
+
+
 def preprocess_image_srcnn(image: Image.Image, scale_factor: int = 2) -> tuple:
     """Preprocess input image for SRCNN inference"""
     try:
@@ -92,17 +125,24 @@ def postprocess_output(hr_tensor: torch.Tensor) -> Image.Image:
         return None
 
 
-def run_inference(model, input_tensor: torch.Tensor, device: str) -> torch.Tensor:
+def run_inference(model, input_tensor, device: str, model_type: str = "pytorch") -> tuple:
     """Run inference on pre-upsampled image"""
     try:
-        with torch.no_grad():
-            input_tensor = input_tensor.to(device)
-            start_time = time.time()
-            
-            hr_output = model(input_tensor)
-            
-            inference_time = time.time() - start_time
+        start_time = time.time()
         
+        if model_type == "onnx":
+            # ONNX inference
+            input_name = model.get_inputs()[0].name
+            input_data = input_tensor.numpy().astype(np.float32)
+            outputs = model.run(None, {input_name: input_data})
+            hr_output = torch.from_numpy(outputs[0]).float()
+        else:
+            # PyTorch inference
+            with torch.no_grad():
+                input_tensor = input_tensor.to(device)
+                hr_output = model(input_tensor)
+        
+        inference_time = time.time() - start_time
         return hr_output, inference_time
     except Exception as e:
         st.error(f"Error during inference: {e}")
@@ -156,7 +196,7 @@ def render_live_inference_page(config):
     st.markdown('<div class="section-header">🎬 Live Inference Demo</div>', unsafe_allow_html=True)
     
     st.info("""
-    📸 **Upload an image and watch SRCNN enhance it in real-time!**
+    📸 **Upload a model and image, then watch SRCNN enhance it in real-time!**
     
     - **Scale Factor:** {}×
     - **Architecture:** Classic 3-layer CNN with {} intermediate channels
@@ -167,51 +207,88 @@ def render_live_inference_page(config):
         config.intermediate_channels
     ))
     
-    # Load model
-    model, device = load_srcnn_model(config)
-    
-    if model is None or device is None:
-        st.error("Failed to load model. Please check your configuration.")
-        return
-    
     # Create tabs for different inference modes
-    tab1, tab2, tab3 = st.tabs(["📤 Upload Image", "📊 Batch Processing", "ℹ️ About"])
+    tab1, tab2, tab3 = st.tabs(["📤 Upload Model & Image", "📊 Batch Processing", "ℹ️ About"])
     
     with tab1:
-        st.markdown("### Single Image Inference")
+        st.markdown("### Model & Image Upload")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            st.markdown("**Upload or select an image:**")
+            st.markdown("**Step 1: Upload Model**")
+            model_file = st.file_uploader(
+                "Choose a model file (.onnx or .pth)",
+                type=['onnx', 'pth', 'pt'],
+                label_visibility="collapsed",
+                key="model_upload_srcnn"
+            )
             
-            # File uploader
-            uploaded_file = st.file_uploader(
+            use_default_model = st.checkbox(
+                "Or use default SRCNN model",
+                value=not model_file,
+                key="use_default_model_srcnn"
+            )
+            
+        with col2:
+            st.markdown("**Step 2: Upload Image for Upscaling**")
+            image_file = st.file_uploader(
                 "Choose an image file",
                 type=['jpg', 'jpeg', 'png', 'bmp', 'webp'],
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                key="image_upload_srcnn"
             )
             
             use_example = st.checkbox("Or use an example image", value=False)
+        
+        # Load model
+        model = None
+        device = None
+        model_source = None
+        model_type = None
+        
+        if use_default_model or model_file is None:
+            # Load default PyTorch model
+            st.info("📦 Loading default SRCNN model...")
+            model, device = load_srcnn_model(config)
+            model_source = "Default SRCNN model"
+            model_type = "pytorch"
+        elif model_file is not None:
+            # Detect model type by extension
+            file_ext = model_file.name.lower().split('.')[-1]
             
-        with col2:
-            st.markdown("**Processing Settings:**")
-            
-            device_choice = st.radio(
-                "Device:",
-                ["Auto (GPU if available)", "CPU Only"],
-                label_visibility="collapsed"
-            )
-            
-            show_metrics = st.checkbox("Show quality metrics", value=True)
+            if file_ext == 'onnx':
+                # Load ONNX model
+                from streamlit.components.viz import validate_onnx_model
+                
+                st.info("🔍 Validating uploaded ONNX model...")
+                if validate_onnx_model(model_file):
+                    st.info("📦 Loading uploaded ONNX model...")
+                    model, device = load_onnx_model_from_upload_srcnn(model_file)
+                    model_source = f"Custom ONNX model: {model_file.name}"
+                    model_type = "onnx"
+                else:
+                    st.error("❌ Invalid ONNX model file. Please upload a valid ONNX model.")
+                    model = None
+                    device = None
+            else:
+                st.error(f"❌ Unsupported model format: {file_ext}. Please upload .onnx, .pth, or .pt files.")
+                model = None
+                device = None
+        
+        if model is None or device is None:
+            st.error("Failed to load model. Please check your configuration.")
+            return
+        
+        st.success(f"✅ Model loaded: {model_source}")
         
         # Process image
-        if uploaded_file is not None or use_example:
+        if image_file is not None or use_example:
             try:
                 # Load image
-                if uploaded_file is not None:
-                    input_image = Image.open(uploaded_file)
-                    image_name = uploaded_file.name
+                if image_file is not None:
+                    input_image = Image.open(image_file)
+                    image_name = image_file.name
                 else:
                     # Create a sample image if example is selected
                     input_image = Image.new('RGB', (128, 128), color='blue')
@@ -238,7 +315,7 @@ def render_live_inference_page(config):
                 st.info("🚀 Running inference...")
                 progress_bar = st.progress(0)
                 
-                hr_output, inference_time = run_inference(model, upsampled_tensor, device)
+                hr_output, inference_time = run_inference(model, upsampled_tensor, device, model_type=model_type)
                 
                 progress_bar.progress(100)
                 
@@ -272,6 +349,7 @@ def render_live_inference_page(config):
                     st.caption(f"Size: {hr_width}×{hr_height}")
                 
                 # Show metrics
+                show_metrics = st.checkbox("Show quality metrics", value=True, key="show_metrics_srcnn")
                 if show_metrics:
                     st.markdown("---")
                     st.markdown("### Quality Metrics")
