@@ -19,6 +19,7 @@ dependencies = [
     "streamlit>=1.56.0",
     "ipykernel>=7.2.0",
     "wandb>=0.26.1",
+    "onnxruntime>=1.17.0",
 ]
 
 [tool.uv]
