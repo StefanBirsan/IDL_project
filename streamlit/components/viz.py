@@ -9,6 +9,83 @@ from typing import Tuple, Optional
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as patches
+import tempfile
+import os
+
+
+def load_onnx_model_from_upload(uploaded_file) -> Tuple[Optional[object], Optional[str]]:
+    """
+    Load ONNX model from uploaded file
+    
+    Args:
+        uploaded_file: Streamlit uploaded file object
+        
+    Returns:
+        Tuple of (onnx_session, device) or (None, None) if error
+    """
+    try:
+        import onnxruntime as ort
+        
+        # Create temporary directory to save the uploaded file
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp_file:
+            tmp_file.write(uploaded_file.getbuffer())
+            tmp_path = tmp_file.name
+        
+        try:
+            # Check for GPU providers
+            providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+            session = ort.InferenceSession(tmp_path, providers=providers)
+            device = "GPU" if 'CUDAExecutionProvider' in session.get_providers() else "CPU"
+            
+            st.success(f"✅ ONNX Model loaded on {device}")
+            return session, device
+        finally:
+            # Clean up temp file
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
+    except ImportError:
+        st.error("❌ onnxruntime not installed. Please install it: pip install onnxruntime")
+        return None, None
+    except Exception as e:
+        st.error(f"❌ Error loading ONNX model: {e}")
+        return None, None
+
+
+def validate_onnx_model(uploaded_file) -> bool:
+    """
+    Validate if uploaded file is a valid ONNX model
+    
+    Args:
+        uploaded_file: Streamlit uploaded file object
+        
+    Returns:
+        True if valid ONNX model, False otherwise
+    """
+    try:
+        import onnx
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp_file:
+            tmp_file.write(uploaded_file.getbuffer())
+            tmp_path = tmp_file.name
+        
+        try:
+            # Try to load and check the model
+            model = onnx.load(tmp_path)
+            onnx.checker.check_model(model)
+            return True
+        finally:
+            # Clean up
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
+    except ImportError:
+        st.warning("⚠️ onnx package not available. Skipping validation.")
+        return True  # Allow anyway if onnx isn't installed
+    except Exception as e:
+        st.error(f"❌ Invalid ONNX model: {e}")
+        return False
 
 
 @st.cache_resource
